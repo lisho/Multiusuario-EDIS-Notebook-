@@ -168,12 +168,16 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
             .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
     }, [allInterventions, caseMap, searchQuery, filterType, assignmentFilter, registrationFilter]);
 
-    const { unassignedSelected, assignedSelected, canBeRegistered, canBeUnregistered } = useMemo(() => {
+    // FIX: Explicitly typing the useMemo hook's return value fixes an inference issue where destructured variables were typed as 'unknown'.
+    const { unassignedSelected, assignedSelected, canBeRegistered, canBeUnregistered } = useMemo<{
+        unassignedSelected: Intervention[];
+        assignedSelected: Intervention[];
+        canBeRegistered: boolean;
+        canBeUnregistered: boolean;
+    }>(() => {
         const selected = allInterventions.filter(i => selectedInterventions.has(i.id));
-        // FIX: Explicitly typing `unassignedSelected` and `assignedSelected` as `Intervention[]` resolves a type inference issue
-        // where TypeScript treated them as `unknown`, causing an error when accessing properties like `.length`.
-        const unassignedSelected: Intervention[] = selected.filter(i => !i.caseId);
-        const assignedSelected: Intervention[] = selected.filter(i => !!i.caseId);
+        const unassignedSelected = selected.filter(i => !i.caseId);
+        const assignedSelected = selected.filter(i => !!i.caseId);
         const canBeRegistered = assignedSelected.some(i => !i.isRegistered);
         const canBeUnregistered = assignedSelected.some(i => i.isRegistered);
         return { unassignedSelected, assignedSelected, canBeRegistered, canBeUnregistered };

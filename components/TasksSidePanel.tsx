@@ -82,14 +82,17 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
     const [newTaskText, setNewTaskText] = useState('');
     const isOpen = mode !== 'closed';
 
-    const tasksByCase = useMemo(() => {
-        if (mode !== 'all') return {};
+    // FIX: Explicitly typing the useMemo hook to ensure `tasksByCase` has a consistent type,
+    // which allows TypeScript to correctly infer the type of `tasks` in `Object.entries`.
+    const tasksByCase = useMemo<{ [caseId: string]: Task[] }>(() => {
         const grouped: { [caseId: string]: Task[] } = {};
-        allCases.forEach(c => {
-            if (c.tasks && c.tasks.length > 0) {
-                grouped[c.id] = c.tasks;
-            }
-        });
+        if (mode === 'all') {
+            allCases.forEach(c => {
+                if (c.tasks && c.tasks.length > 0) {
+                    grouped[c.id] = c.tasks;
+                }
+            });
+        }
         return grouped;
     }, [allCases, mode]);
 
