@@ -17,7 +17,7 @@ type FormErrors = {
 };
 
 const familyRelationships = ['Padre', 'Madre', 'Hijo/a', 'Hermano/a', 'Abuelo/a', 'Nieto/a', 'Tío/a', 'Sobrino/a', 'Primo/a', 'Cónyuge', 'Pareja', 'Otro familiar'];
-const nonFamilyRelationships = ['Amigo/a', 'Vecino/a', 'Compañero/a de trabajo', 'Profesional de referencia', 'Otro no familiar'];
+const nonFamilyRelationships = ['Amigo/a', 'Vecino/a', 'Compañero/a de trabajo', 'Ex-pareja/Ex-cónyuge', 'Profesional de referencia', 'Otro no familiar'];
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const getInitialFormData = (initialData?: FamilyMember | null): Omit<FamilyMember, 'id'> & { id?: string } => ({

@@ -28,7 +28,8 @@ import {
     IoSparklesOutline, 
     IoAddOutline,
     IoWalkOutline,
-    IoJournalOutline
+    IoJournalOutline,
+    IoFileTrayFullOutline
 } from 'react-icons/io5';
 
 type DiagnosisTab = 'tools' | 'relational';
@@ -93,6 +94,7 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
     }, [initialView, caseData.id]);
 
     const momentMap: Partial<Record<DashboardView, InterventionMoment>> = {
+        'referral': InterventionMoment.Referral,
         'welcome': InterventionMoment.Welcome,
         'diagnosis': InterventionMoment.Diagnosis,
         'planning': InterventionMoment.Planning,
@@ -204,6 +206,15 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
         switch (activeView) {
             case 'profile':
                 return <ProfileView caseData={caseData} onUpdateCase={onUpdateCase} onDeleteCase={onDeleteCase} />;
+            case 'referral':
+                return <InterventionMomentView 
+                            moment={InterventionMoment.Referral}
+                            availableTools={adminTools.filter(t => t.moment === InterventionMoment.Referral)}
+                            records={interventionRecords.filter(r => r.moment === InterventionMoment.Referral)}
+                            onRunTool={handleRunTool}
+                            onDeleteRecord={(recordId) => onDeleteInterventionRecord(caseData.id, recordId)}
+                            requestConfirmation={requestConfirmation}
+                        />;
             case 'welcome':
                 return <InterventionMomentView 
                             moment={InterventionMoment.Welcome}
@@ -339,6 +350,7 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                         <div>
                             <NavHeader title="Momentos de la intervención" isCollapsed={isSidebarCollapsed} />
                             <div className="flex flex-col gap-2">
+                                <NavItem view="referral" label="Derivación" icon={IoFileTrayFullOutline} isCollapsed={isSidebarCollapsed}/>
                                 <NavItem view="welcome" label="Acogida" icon={IoHomeOutline} isCollapsed={isSidebarCollapsed}/>
                                 <NavItem view="diagnosis" label="Diagnóstico" icon={IoBeakerOutline} isCollapsed={isSidebarCollapsed}/>
                                 <NavItem view="planning" label="Planificación" icon={IoMapOutline} isCollapsed={isSidebarCollapsed}/>

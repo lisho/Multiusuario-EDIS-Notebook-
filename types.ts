@@ -17,6 +17,7 @@ export enum CaseStatus {
 }
 
 export enum InterventionMoment {
+    Referral = 'Derivación',
     Welcome = 'Acogida',
     Diagnosis = 'Diagnóstico',
     Planning = 'Planificación',
@@ -171,7 +172,7 @@ export interface Case {
     createdBy?: string;
 }
 
-export type DashboardView = 'profile' | 'welcome' | 'tasks' | 'diagnosis' | 'planning' | 'accompaniment' | 'reports' | 'notebook' | 'professionals' | 'myNotes';
+export type DashboardView = 'profile' | 'referral' | 'welcome' | 'tasks' | 'diagnosis' | 'planning' | 'accompaniment' | 'reports' | 'notebook' | 'professionals' | 'myNotes';
 
 export interface ChatMessage {
     role: 'user' | 'model';

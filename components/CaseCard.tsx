@@ -89,8 +89,16 @@ const CaseCard: React.FC<CaseCardProps> = ({
                         {caseData.status}
                     </button>
                     {caseData.status !== CaseStatus.Closed && (
-                        <button onClick={handleTogglePin} className="text-slate-400 hover:text-teal-600 p-1 -mr-2 -mt-2">
-                            {caseData.isPinned ? <BsPinAngleFill className="text-teal-600"/> : <BsPinAngle />}
+                        <button 
+                            onClick={handleTogglePin} 
+                            className="group -mr-2 -mt-2 rounded-full transition-colors hover:bg-teal-50 flex items-center justify-center w-8 h-8"
+                            aria-label={caseData.isPinned ? "Desfijar caso" : "Fijar caso"}
+                            title={caseData.isPinned ? "Desfijar caso" : "Fijar caso"}
+                        >
+                            {caseData.isPinned 
+                                ? <BsPinAngleFill className="text-teal-600 text-lg"/> 
+                                : <BsPinAngle className="text-slate-400 group-hover:text-teal-600 text-lg"/>
+                            }
                         </button>
                     )}
                 </div>

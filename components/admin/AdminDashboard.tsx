@@ -27,6 +27,7 @@ interface AdminDashboardProps {
 type AdminTab = 'tools' | 'professionals' | 'interventions';
 
 const momentConfig = {
+    [InterventionMoment.Referral]: { title: 'Derivación', description: 'Herramientas para registrar la derivación del caso.' },
     [InterventionMoment.Welcome]: { title: 'Acogida', description: 'Herramientas para la primera toma de contacto.' },
     [InterventionMoment.Diagnosis]: { title: 'Diagnóstico', description: 'Instrumentos para evaluar la situación.' },
     [InterventionMoment.Planning]: { title: 'Planificación', description: 'Plantillas para definir objetivos y acciones.' },

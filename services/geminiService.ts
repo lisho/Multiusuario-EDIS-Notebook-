@@ -82,6 +82,7 @@ ${formattedEntries}
 
 const getSystemInstruction = (moment: InterventionMoment): string => {
     const momentMap: Record<InterventionMoment, string> = {
+        [InterventionMoment.Referral]: "Derivación. El objetivo es documentar y analizar la información de la derivación inicial, incluyendo la fuente, el motivo y los antecedentes.",
         [InterventionMoment.Welcome]: "Acogida. El objetivo es establecer el primer contacto, entender el motivo de la consulta y las expectativas iniciales.",
         [InterventionMoment.Diagnosis]: "Diagnóstico. El objetivo es analizar en profundidad las diferentes áreas de la vida de la persona (DAFO, red de apoyo, situación laboral, etc.).",
         [InterventionMoment.Planning]: "Planificación. El objetivo es definir metas y acciones concretas en un plan de trabajo conjunto.",

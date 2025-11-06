@@ -12,6 +12,8 @@ interface InterventionMomentViewProps {
 }
 
 const momentTitles: Record<InterventionMoment, string> = {
+    // FIX: Added the missing 'Referral' key to the object to satisfy the 'Record<InterventionMoment, string>' type, which requires all enum members to be present.
+    [InterventionMoment.Referral]: 'Derivación',
     [InterventionMoment.Welcome]: 'Acogida',
     [InterventionMoment.Diagnosis]: 'Diagnóstico',
     [InterventionMoment.Planning]: 'Planificación',
