@@ -405,11 +405,19 @@ const App: React.FC = () => {
     };
     
     const handleDeleteTask = (caseId: string, taskId: string) => {
-        const updatedCase = cases.find(c => c.id === caseId);
-        if (updatedCase) {
-            const updatedTasks = updatedCase.tasks.filter(t => t.id !== taskId);
-            handleUpdateCase({ ...updatedCase, tasks: updatedTasks });
-        }
+        const targetCase = cases.find(c => c.id === caseId);
+        if (!targetCase) return;
+        const taskToDelete = targetCase.tasks.find(t => t.id === taskId);
+        if (!taskToDelete) return;
+
+        requestConfirmation(
+            'Eliminar Tarea',
+            `¿Estás seguro de que quieres eliminar la tarea "${taskToDelete.text}"? Esta acción no se puede deshacer.`,
+            () => {
+                const updatedTasks = targetCase.tasks.filter(t => t.id !== taskId);
+                handleUpdateCase({ ...targetCase, tasks: updatedTasks });
+            }
+        );
     };
     
     const handleToggleGeneralTask = async (taskId: string) => {
@@ -426,14 +434,23 @@ const App: React.FC = () => {
         }
     };
 
-    const handleDeleteGeneralTask = async (taskId: string) => {
-        const taskRef = doc(db, "generalTasks", taskId);
-        try {
-            await deleteDoc(taskRef);
-            setGeneralTasks(generalTasks.filter(t => t.id !== taskId));
-        } catch (error) {
-            console.error("Error deleting general task:", error);
-        }
+    const handleDeleteGeneralTask = (taskId: string) => {
+        const taskToDelete = generalTasks.find(t => t.id === taskId);
+        if (!taskToDelete) return;
+    
+        requestConfirmation(
+            'Eliminar Tarea General',
+            `¿Estás seguro de que quieres eliminar la tarea general "${taskToDelete.text}"? Esta acción no se puede deshacer.`,
+            async () => {
+                const taskRef = doc(db, "generalTasks", taskId);
+                try {
+                    await deleteDoc(taskRef);
+                    setGeneralTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
+                } catch (error) {
+                    console.error("Error deleting general task:", error);
+                }
+            }
+        );
     };
 
     const handleSaveTool = async (tool: AdminTool) => {

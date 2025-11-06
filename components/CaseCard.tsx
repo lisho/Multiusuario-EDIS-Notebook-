@@ -21,12 +21,12 @@ interface CaseCardProps {
 
 const getStatusStyles = (status: CaseStatus): { bg: string; text: string; footerBg: string; } => {
     switch (status) {
-        case CaseStatus.PendingReferral: return { bg: 'bg-amber-100', text: 'text-amber-800', footerBg: 'bg-amber-50' };
-        case CaseStatus.Welcome: return { bg: 'bg-emerald-100', text: 'text-emerald-800', footerBg: 'bg-emerald-50' };
-        case CaseStatus.CoDiagnosis: return { bg: 'bg-blue-100', text: 'text-blue-800', footerBg: 'bg-blue-50' };
-        case CaseStatus.SharedPlanning: return { bg: 'bg-purple-100', text: 'text-purple-800', footerBg: 'bg-purple-50' };
-        case CaseStatus.Accompaniment: return { bg: 'bg-teal-100', text: 'text-teal-800', footerBg: 'bg-teal-50' };
-        case CaseStatus.FollowUp: return { bg: 'bg-lime-100', text: 'text-lime-800', footerBg: 'bg-lime-50' };
+        case CaseStatus.PendingReferral: return { bg: 'bg-amber-400', text: 'text-amber-800', footerBg: 'bg-amber-50' };
+        case CaseStatus.Welcome: return { bg: 'bg-emerald-400', text: 'text-emerald-800', footerBg: 'bg-emerald-50' };
+        case CaseStatus.CoDiagnosis: return { bg: 'bg-blue-400', text: 'text-blue-800', footerBg: 'bg-blue-50' };
+        case CaseStatus.SharedPlanning: return { bg: 'bg-purple-400', text: 'text-purple-800', footerBg: 'bg-purple-50' };
+        case CaseStatus.Accompaniment: return { bg: 'bg-teal-400', text: 'text-teal-800', footerBg: 'bg-teal-50' };
+        case CaseStatus.FollowUp: return { bg: 'bg-lime-400', text: 'text-lime-800', footerBg: 'bg-lime-50' };
         case CaseStatus.Closed: return { bg: 'bg-zinc-200', text: 'text-zinc-800', footerBg: 'bg-zinc-100' };
         default: return { bg: 'bg-slate-100', text: 'text-slate-800', footerBg: 'bg-slate-50' };
     }
@@ -93,16 +93,16 @@ const CaseCard: React.FC<CaseCardProps> = ({
                         </button>
                     )}
                 </div>
-                <h3 className="mt-3 text-lg font-bold text-slate-800 group-hover:text-teal-600 transition-colors">{caseData.name}</h3>
+                <h3 className="mt-3 text-xl font-bold text-slate-800 group-hover:text-teal-600 transition-colors">{caseData.name}</h3>
                 {caseData.nickname && <p className="text-sm font-semibold text-slate-500">{caseData.nickname}</p>}
 
-                <div className="mt-4 space-y-2">
+                <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3">
                     {edisTechnicians.length > 0 && (
                          <div className="flex items-center gap-3">
                             <span className="text-xs font-semibold text-slate-500 w-10 flex-shrink-0">EDIS</span>
                             <div className="flex -space-x-2">
                                 {edisTechnicians.map(p => (
-                                     <div key={p.id} className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs border-2 border-white overflow-hidden transition-transform duration-200 hover:scale-125 hover:z-10" title={p.name}>
+                                     <div key={p.id} className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs border-2 border-white overflow-hidden transition-transform duration-200 hover:scale-150 hover:z-10" title={p.name}>
                                         {p.avatar ? (
                                             <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
                                         ) : (
@@ -118,7 +118,7 @@ const CaseCard: React.FC<CaseCardProps> = ({
                             <span className="text-xs font-semibold text-slate-500 w-10 flex-shrink-0">CEAS</span>
                             <div className="flex -space-x-2">
                                 {socialWorkers.map(p => (
-                                    <div key={p.id} className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-xs border-2 border-white overflow-hidden transition-transform duration-200 hover:scale-125 hover:z-10" title={p.name}>
+                                    <div key={p.id} className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-xs border-2 border-white overflow-hidden transition-transform duration-200 hover:scale-150 hover:z-10" title={p.name}>
                                         {p.avatar ? (
                                             <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
                                         ) : (

@@ -82,8 +82,9 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
     const [newTaskText, setNewTaskText] = useState('');
     const isOpen = mode !== 'closed';
 
-    // FIX: Explicitly typing the useMemo hook to ensure `tasksByCase` has a consistent type,
-    // which allows TypeScript to correctly infer the type of `tasks` in `Object.entries`.
+    // FIX: Explicitly typing the useMemo hook to ensure `tasksByCase` has a consistent type.
+    // This allows TypeScript to correctly infer the type of `tasks` when using Object.entries,
+    // resolving an error where `.map` was called on a variable of type 'unknown'.
     const tasksByCase = useMemo<{ [caseId: string]: Task[] }>(() => {
         const grouped: { [caseId: string]: Task[] } = {};
         if (mode === 'all') {
@@ -165,7 +166,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                             value={newTaskText}
                             onChange={(e) => setNewTaskText(e.target.value)}
                             placeholder={mode === 'single' ? 'Añadir tarea a este caso...' : 'Añadir tarea general...'}
-                            className="flex-grow px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-slate-100 border-slate-300 focus:ring-teal-500"
+                            className="flex-grow px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-slate-100 text-slate-900 placeholder:text-slate-500 border-slate-300 focus:ring-teal-500"
                         />
                         <button type="submit" className="bg-teal-600 text-white w-9 h-9 rounded-lg hover:bg-teal-700 flex items-center justify-center transition-colors flex-shrink-0" title="Añadir Tarea">
                             <IoAddOutline className="text-lg" />
