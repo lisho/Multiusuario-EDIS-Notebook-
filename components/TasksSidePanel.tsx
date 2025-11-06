@@ -1,16 +1,74 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Case, Task, DashboardView, User } from '../types';
-import { IoCheckboxOutline, IoCloseOutline, IoTrashOutline, IoAddOutline, IoBookOutline } from 'react-icons/io5';
+import React, { useState, useMemo } from 'react';
+import { Case, Task, Professional, DashboardView, User } from '../types';
+import { IoCloseOutline, IoAddOutline, IoTrashOutline, IoArrowRedoOutline, IoChevronForwardCircleOutline } from 'react-icons/io5';
+
+interface TaskItemProps {
+    task: Task;
+    onToggle: () => void;
+    onDelete: () => void;
+    onConvertToEntry: () => void;
+    professionals: Professional[];
+    caseName?: string;
+    onSelectCase?: () => void;
+}
+
+const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onDelete, onConvertToEntry, professionals, caseName, onSelectCase }) => {
+    const assignedProfs = (task.assignedTo || [])
+        .map(id => professionals.find(p => p.id === id))
+        .filter(Boolean) as Professional[];
+
+    return (
+        <div className="flex items-start gap-3 p-2.5 bg-white rounded-lg border border-slate-200 group">
+            <input
+                type="checkbox"
+                checked={task.completed}
+                onChange={onToggle}
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer flex-shrink-0"
+            />
+            <div className="flex-grow">
+                <p className={`text-sm text-slate-800 ${task.completed ? 'line-through text-slate-500' : ''}`}>{task.text}</p>
+                {caseName && (
+                     <button onClick={onSelectCase} className="text-xs font-semibold text-teal-700 hover:underline">{caseName}</button>
+                )}
+                <div className="flex items-center gap-1 mt-1 -space-x-1">
+                     {assignedProfs.map(p => (
+                         <div key={p.id} className="w-5 h-5 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-[10px] border border-white overflow-hidden transition-transform duration-200 hover:scale-150 hover:z-10" title={p.name}>
+                            {p.avatar ? (
+                                <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
+                            ) : (
+                                <span>{getInitials(p.name)}</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <div className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                {!task.completed && (
+                    <button onClick={onConvertToEntry} className="p-1 text-slate-400 hover:text-teal-600 rounded-full hover:bg-slate-100" title="Convertir en Entrada">
+                        <IoArrowRedoOutline />
+                    </button>
+                )}
+                <button onClick={onDelete} className="p-1 text-slate-400 hover:text-red-600 rounded-full hover:bg-red-100" title="Eliminar Tarea">
+                    <IoTrashOutline />
+                </button>
+            </div>
+        </div>
+    );
+};
+
 
 interface TasksSidePanelProps {
     mode: 'closed' | 'single' | 'all';
     caseData?: Case;
-    allCases?: Case[];
-    generalTasks?: Task[];
+    allCases: Case[];
+    generalTasks: Task[];
+    professionals: Professional[];
     onClose: () => void;
-    onAddTask: (caseId: string | null, text: string) => void;
-    onToggleTask: (caseId: string, id: string) => void;
-    onDeleteTask: (caseId: string, id: string) => void;
+    onAddTask: (caseId: string | null, taskText: string, assignedTo?: string[]) => void;
+    onToggleTask: (caseId: string, taskId: string) => void;
+    onDeleteTask: (caseId: string, taskId: string) => void;
     onToggleGeneralTask: (taskId: string) => void;
     onDeleteGeneralTask: (taskId: string) => void;
     onTaskToEntry: (task: Task) => void;
@@ -18,233 +76,101 @@ interface TasksSidePanelProps {
     currentUser: User | null;
 }
 
-const TasksSidePanel: React.FC<TasksSidePanelProps> = ({ mode, caseData, allCases, generalTasks, onClose, onAddTask, onToggleTask, onDeleteTask, onToggleGeneralTask, onDeleteGeneralTask, onTaskToEntry, onSelectCaseById, currentUser }) => {
-    const [isVisible, setIsVisible] = useState(false);
+const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
+    const { mode, caseData, allCases, generalTasks, professionals, onClose, onAddTask, onToggleTask, onDeleteTask, onToggleGeneralTask, onDeleteGeneralTask, onTaskToEntry, onSelectCaseById, currentUser } = props;
+    
     const [newTaskText, setNewTaskText] = useState('');
-    const [error, setError] = useState<string | null>(null);
     const isOpen = mode !== 'closed';
 
-    useEffect(() => {
-        if (isOpen) {
-            const timer = setTimeout(() => setIsVisible(true), 10);
-            return () => clearTimeout(timer);
-        } else {
-            setIsVisible(false);
-        }
-    }, [isOpen]);
-
-    const handleClose = () => {
-        setIsVisible(false);
-        setTimeout(onClose, 300);
-    };
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setNewTaskText(e.target.value);
-        if (error) {
-            setError(null);
-        }
-    };
+    const tasksByCase = useMemo(() => {
+        if (mode !== 'all') return {};
+        const grouped: { [caseId: string]: Task[] } = {};
+        allCases.forEach(c => {
+            if (c.tasks && c.tasks.length > 0) {
+                grouped[c.id] = c.tasks;
+            }
+        });
+        return grouped;
+    }, [allCases, mode]);
 
     const handleAddTask = (e: React.FormEvent) => {
         e.preventDefault();
-        if (newTaskText.trim() && caseData) {
-            onAddTask(caseData.id, newTaskText.trim());
+        if (newTaskText.trim()) {
+            const caseId = mode === 'single' ? caseData!.id : null;
+            const assignedTo = mode === 'single' && currentUser ? [currentUser.id] : undefined;
+            onAddTask(caseId, newTaskText.trim(), assignedTo);
             setNewTaskText('');
-            setError(null);
-        } else {
-            setError('La tarea no puede estar vacía.');
         }
     };
-    
-    const tasksByCase = useMemo(() => {
-        if (mode !== 'all' || !allCases || !currentUser) return [];
-        return allCases
-            .map(c => ({
-                caseId: c.id,
-                caseName: c.name,
-                caseNickname: c.nickname,
-                tasks: c.tasks.filter(t => !t.completed && t.createdBy === currentUser.id)
-            }))
-            .filter(group => group.tasks.length > 0);
-    }, [allCases, mode, currentUser]);
-    
-    const pendingGeneralTasks = useMemo(() => {
-        if (mode !== 'all' || !generalTasks || !currentUser) return [];
-        return generalTasks.filter(t => !t.completed && t.createdBy === currentUser.id);
-    }, [generalTasks, mode, currentUser]);
 
+    if (!isOpen) return null;
 
-    const TaskItem: React.FC<{task: Task, caseId: string | null}> = ({ task, caseId }) => {
-        const handleToggle = () => {
-            if (caseId) {
-                onToggleTask(caseId, task.id);
-            } else {
-                onToggleGeneralTask(task.id);
-            }
-        };
-        const handleDelete = () => {
-             if (caseId) {
-                onDeleteTask(caseId, task.id);
-            } else {
-                onDeleteGeneralTask(task.id);
-            }
-        };
-        
-        return (
-            <li className="flex items-center justify-between p-3 rounded-md bg-slate-100 hover:bg-slate-200/60 transition-colors">
-                <div className="flex items-center gap-3">
-                    <input
-                        type="checkbox"
-                        checked={task.completed}
-                        onChange={handleToggle}
-                        className="h-5 w-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
-                    />
-                    <span className={`text-slate-800 ${task.completed ? 'line-through text-slate-500' : ''}`}>{task.text}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                    {task.completed && caseId && (
-                        <button onClick={() => onTaskToEntry(task)} className="text-slate-400 hover:text-teal-600 transition-colors p-1" title="Añadir al cuaderno">
-                            <IoBookOutline className="text-xl" />
-                        </button>
-                    )}
-                    <button onClick={handleDelete} className="text-slate-400 hover:text-red-600 transition-colors" title="Eliminar tarea">
-                        <IoTrashOutline className="text-xl" />
-                    </button>
-                </div>
-            </li>
-        );
-    };
-
-    const renderSingleCaseView = () => {
-        if (!caseData || !currentUser) return null;
-        const userTasks = caseData.tasks.filter(t => t.createdBy === currentUser.id);
-        const pendingTasks = userTasks.filter(task => !task.completed);
-        const completedTasks = userTasks.filter(task => task.completed);
-        
-        return (
-            <>
-                <div>
-                    <h3 className="text-lg font-semibold text-slate-800 mb-3">Pendientes ({pendingTasks.length})</h3>
-                    {pendingTasks.length > 0 ? (
-                        <ul className="space-y-2">
-                            {pendingTasks.map(task => <TaskItem key={task.id} task={task} caseId={caseData.id} />)}
-                        </ul>
-                        ) : (
-                        <p className="text-slate-500 text-sm italic">No hay tareas pendientes.</p>
-                    )}
-                </div>
-
-                {completedTasks.length > 0 && (
-                    <div>
-                        <h3 className="text-lg font-semibold text-slate-800 mb-3">Completadas ({completedTasks.length})</h3>
-                        <ul className="space-y-2">
-                            {completedTasks.map(task => <TaskItem key={task.id} task={task} caseId={caseData.id} />)}
-                        </ul>
-                    </div>
-                )}
-            </>
-        );
-    };
-
-    const renderAllCasesView = () => (
-        <div className="space-y-6">
-            {tasksByCase.map(group => (
-                <div key={group.caseId}>
-                    <button 
-                        onClick={() => onSelectCaseById(group.caseId, 'tasks')} 
-                        className="font-semibold text-teal-700 hover:underline text-lg"
-                        title={`Ir al caso de ${group.caseName}`}
-                    >
-                        {group.caseName}
-                        {group.caseNickname && (
-                            <strong className="ml-2 font-bold text-slate-600">({group.caseNickname})</strong>
-                        )}
-                    </button>
-                    <ul className="space-y-2 mt-2">
-                        {group.tasks.map(task => (
-                            <TaskItem key={task.id} task={task} caseId={group.caseId} />
-                        ))}
-                    </ul>
-                </div>
-            ))}
-            
-            {pendingGeneralTasks.length > 0 && (
-                <div>
-                    <h3 className="font-semibold text-teal-700 text-lg">Tareas Generales</h3>
-                    <ul className="space-y-2 mt-2">
-                        {pendingGeneralTasks.map(task => (
-                            <TaskItem key={task.id} task={task} caseId={null} />
-                        ))}
-                    </ul>
-                </div>
-            )}
-
-            {tasksByCase.length === 0 && pendingGeneralTasks.length === 0 && (
-                <p className="text-slate-500 text-sm italic text-center py-8">¡Felicidades! No hay tareas pendientes en ningún caso.</p>
-            )}
-        </div>
-    );
-    
-    if (mode === 'closed') return null;
+    const title = mode === 'single' ? `Tareas de ${caseData?.name}` : 'Todas las Tareas';
 
     return (
-        <div 
-            className={`fixed inset-0 z-50 transition-opacity duration-300 ease-in-out ${isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-            role="dialog"
-            aria-modal="true"
-        >
-            <div 
-                className="absolute inset-0 bg-black bg-opacity-50" 
-                onClick={handleClose} 
-                aria-hidden="true"
-            />
-            
-            <div 
-                className={`absolute top-0 right-0 h-full w-full max-w-md bg-slate-50 shadow-xl flex flex-col transform transition-transform duration-300 ease-in-out ${isVisible ? 'translate-x-0' : 'translate-x-full'}`}
-            >
+        <>
+            <div className="fixed inset-0 bg-black bg-opacity-50 z-40" onClick={onClose} />
+            <div className="fixed top-0 right-0 h-full w-full max-w-md bg-slate-50 shadow-xl flex flex-col z-50">
                 <div className="flex justify-between items-center p-4 border-b border-slate-200 bg-white flex-shrink-0">
-                    <div className="flex items-center gap-3">
-                        <IoCheckboxOutline className="text-2xl text-teal-600" />
-                        <div>
-                            <h2 className="text-xl font-bold text-slate-800">
-                                {mode === 'single' ? 'Mis Tareas' : 'Todas Mis Tareas Pendientes'}
-                            </h2>
-                            {mode === 'single' && caseData && <p className="text-base font-medium text-slate-600">
-                                {caseData.name}
-                                {caseData.nickname && <strong className="ml-2 font-bold">({caseData.nickname})</strong>}
-                            </p>}
-                        </div>
-                    </div>
-                    <button onClick={handleClose} className="text-slate-500 hover:text-slate-800" aria-label="Cerrar panel de tareas">
+                    <h3 className="text-xl font-bold text-slate-800">{title}</h3>
+                    <button onClick={onClose} className="text-slate-500 hover:text-slate-800">
                         <IoCloseOutline className="text-3xl" />
                     </button>
                 </div>
                 
-                <div className="flex-grow overflow-y-auto p-6 space-y-6">
-                    {mode === 'single' ? renderSingleCaseView() : renderAllCasesView()}
-                </div>
-
-                {mode === 'single' && (
-                    <div className="p-4 bg-white border-t border-slate-200">
-                        <form onSubmit={handleAddTask}>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={newTaskText}
-                                    onChange={handleInputChange}
-                                    placeholder="Añadir nueva tarea..."
-                                    className={`flex-grow px-3 py-2 text-sm text-slate-900 border rounded-md focus:outline-none focus:ring-1 bg-white ${error ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 focus:ring-teal-500'}`}
-                                />
-                                <button type="submit" className="bg-teal-600 text-white w-10 h-10 rounded-md hover:bg-teal-700 flex items-center justify-center transition-colors disabled:bg-slate-400" disabled={!newTaskText.trim()}>
-                                    <IoAddOutline className="text-2xl" />
-                                </button>
+                <div className="flex-grow overflow-y-auto p-4 space-y-4">
+                    {mode === 'all' && (
+                        <div>
+                            <h4 className="font-semibold text-slate-700 mb-2">Tareas Generales</h4>
+                            <div className="space-y-2">
+                                {generalTasks.map(task => (
+                                    <TaskItem key={task.id} task={task} onToggle={() => onToggleGeneralTask(task.id)} onDelete={() => onDeleteGeneralTask(task.id)} onConvertToEntry={() => {}} professionals={[]} />
+                                ))}
                             </div>
-                            {error && <p className="text-red-600 text-xs mt-1">{error}</p>}
-                        </form>
-                    </div>
-                )}
+                        </div>
+                    )}
+
+                    {mode === 'single' && caseData && caseData.tasks.map(task => (
+                        <TaskItem key={task.id} task={task} onToggle={() => onToggleTask(caseData.id, task.id)} onDelete={() => onDeleteTask(caseData.id, task.id)} onConvertToEntry={() => { onTaskToEntry(task); onClose(); }} professionals={professionals} />
+                    ))}
+                    
+                    {mode === 'all' && Object.entries(tasksByCase).map(([caseId, tasks]) => {
+                        const currentCase = allCases.find(c => c.id === caseId);
+                        if (!currentCase) return null;
+                        return (
+                            <div key={caseId}>
+                                <h4 className="font-semibold text-slate-700 mb-2 flex items-center justify-between">
+                                    <span>{currentCase.name}</span>
+                                    <button onClick={() => { onSelectCaseById(caseId, 'tasks'); onClose(); }} className="text-xs flex items-center gap-1 text-teal-700 hover:underline">
+                                        Ir al caso <IoChevronForwardCircleOutline />
+                                    </button>
+                                </h4>
+                                <div className="space-y-2">
+                                    {tasks.map(task => (
+                                         <TaskItem key={task.id} task={task} onToggle={() => onToggleTask(caseId, task.id)} onDelete={() => onDeleteTask(caseId, task.id)} onConvertToEntry={() => { onSelectCaseById(caseId, 'tasks'); onTaskToEntry(task); }} professionals={professionals} />
+                                    ))}
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+                
+                <div className="p-4 border-t border-slate-200 bg-white flex-shrink-0">
+                    <form onSubmit={handleAddTask} className="flex gap-2">
+                        <input
+                            type="text"
+                            value={newTaskText}
+                            onChange={(e) => setNewTaskText(e.target.value)}
+                            placeholder={mode === 'single' ? 'Añadir tarea a este caso...' : 'Añadir tarea general...'}
+                            className="flex-grow px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-slate-100 border-slate-300 focus:ring-teal-500"
+                        />
+                        <button type="submit" className="bg-teal-600 text-white w-9 h-9 rounded-lg hover:bg-teal-700 flex items-center justify-center transition-colors flex-shrink-0" title="Añadir Tarea">
+                            <IoAddOutline className="text-lg" />
+                        </button>
+                    </form>
+                </div>
             </div>
-        </div>
+        </>
     );
 };
 

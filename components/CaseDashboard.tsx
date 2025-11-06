@@ -50,8 +50,10 @@ interface CaseDashboardProps {
     caseData: Case;
     onBack: () => void;
     onUpdateCase: (updatedCase: Case) => void;
+    onUpdateTask: (caseId: string, updatedTask: Task) => void;
     onDeleteCase: (caseId: string) => void;
-    onAddTask: (caseId: string, taskText: string) => void;
+    // FIX: Changed `assignedTo` type from `string` to `string[]` to match the implementation in `App.tsx` and `TasksView.tsx`.
+    onAddTask: (caseId: string, taskText: string, assignedTo?: string[]) => void;
     onToggleTask: (caseId: string, taskId: string) => void;
     onDeleteTask: (caseId: string, taskId: string) => void;
     onOpenTasks: () => void;
@@ -71,7 +73,7 @@ interface CaseDashboardProps {
 }
 
 const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
-    const { caseData, onBack, onUpdateCase, onDeleteCase, adminTools, onSaveInterventionRecord, onDeleteInterventionRecord, onOpenTasks, isSidebarCollapsed, onToggleSidebar, requestConfirmation, taskToConvert, onConversionHandled, initialView, currentUser } = props;
+    const { caseData, onBack, onUpdateCase, onUpdateTask, onDeleteCase, adminTools, onSaveInterventionRecord, onDeleteInterventionRecord, onOpenTasks, isSidebarCollapsed, onToggleSidebar, requestConfirmation, taskToConvert, onConversionHandled, initialView, currentUser } = props;
     const [activeView, setActiveView] = useState<DashboardView>(initialView);
     const [diagnosisTab, setDiagnosisTab] = useState<DiagnosisTab>('relational');
     
@@ -278,11 +280,15 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                         />;
             case 'tasks':
                 return <TasksView 
-                    tasks={caseData.tasks.filter(t => t.createdBy === currentUser.id)}
-                    onAddTask={(taskText) => props.onAddTask(caseData.id, taskText)}
+                    tasks={caseData.tasks}
+                    onAddTask={(taskText, assignedTo) => props.onAddTask(caseData.id, taskText, assignedTo)}
                     onToggleTask={(taskId) => props.onToggleTask(caseData.id, taskId)}
                     onDeleteTask={(taskId) => props.onDeleteTask(caseData.id, taskId)}
                     onTaskToEntry={handleTaskToEntry}
+                    professionals={props.professionals}
+                    caseData={caseData}
+                    onUpdateTask={(updatedTask) => onUpdateTask(caseData.id, updatedTask)}
+                    currentUser={currentUser}
                 />;
             case 'notebook':
                 return <TimelineNotebookView 

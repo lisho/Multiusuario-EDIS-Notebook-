@@ -12,6 +12,7 @@ import ConfirmationModal from './components/ConfirmationModal';
 import NewTaskModal from './components/NewTaskModal';
 import QuickNoteModal from './components/QuickNoteModal';
 import Login from './components/Login';
+import ProfileEditorModal from './components/ProfileEditorModal';
 import { Case, CaseStatus, Task, AdminTool, Intervention, InterventionRecord, Professional, DashboardView, MyNote, User, ProfessionalRole } from './types';
 import { db } from './services/firebase';
 import { collection, query, getDocs, addDoc, doc, updateDoc, deleteDoc, writeBatch, setDoc } from 'firebase/firestore';
@@ -38,6 +39,7 @@ const App: React.FC = () => {
     const [initialDashboardView, setInitialDashboardView] = useState<DashboardView>('profile');
     const [isNewCaseModalOpen, setIsNewCaseModalOpen] = useState(false);
     const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [tasksPanelState, setTasksPanelState] = useState<{ mode: 'closed' | 'single' | 'all'; caseData?: Case }>({ mode: 'closed' });
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -120,7 +122,15 @@ const App: React.FC = () => {
                     if (lishoId) {
                         caseData.createdBy = caseData.createdBy || lishoId;
                         caseData.interventions = caseData.interventions.map(i => ({...i, createdBy: i.createdBy || lishoId}));
-                        caseData.tasks = caseData.tasks.map(t => ({...t, createdBy: t.createdBy || lishoId}));
+                        caseData.tasks = caseData.tasks.map(t => {
+                            const migratedTask = {...t, createdBy: t.createdBy || lishoId};
+                            // Data migration for tasks: convert assignedTo from string to string[]
+                            if (typeof migratedTask.assignedTo === 'string') {
+                                // @ts-ignore
+                                migratedTask.assignedTo = [migratedTask.assignedTo];
+                            }
+                            return migratedTask;
+                        });
                         
                         let processedNotes: MyNote[] = [];
                         if (Array.isArray(caseData.myNotes)) {
@@ -194,6 +204,16 @@ const App: React.FC = () => {
         // Technicians only see cases they are assigned to
         return cases.filter(c => c.professionalIds?.includes(currentUser.id));
     }, [cases, currentUser]);
+    
+    const currentUserProfessional = useMemo(() => {
+        if (!currentUser) return null;
+        return professionals.find(p => p.id === currentUser.id) || null;
+    }, [currentUser, professionals]);
+
+    const currentUserGeneralTasks = useMemo(() => {
+        if (!currentUser) return [];
+        return generalTasks.filter(task => task.createdBy === currentUser.id);
+    }, [generalTasks, currentUser]);
 
     const handleSetView = (view: 'cases' | 'admin' | 'calendar') => {
         setSelectedCase(null);
@@ -310,9 +330,15 @@ const App: React.FC = () => {
         setInitialDashboardView('profile');
     };
 
-    const handleAddTask = async (caseId: string | null, taskText: string) => {
+    const handleAddTask = async (caseId: string | null, taskText: string, assignedTo?: string[]) => {
         if (!currentUser) return;
-        const newTask: Task = { id: `task-${Date.now()}`, text: taskText, completed: false, createdBy: currentUser.id };
+        const newTask: Task = {
+            id: `task-${Date.now()}`,
+            text: taskText,
+            completed: false,
+            createdBy: currentUser.id,
+            ...(caseId && { assignedTo: assignedTo && assignedTo.length > 0 ? assignedTo : [currentUser.id] }) // Add assignedTo only for case tasks
+        };
         if (caseId) {
             const updatedCase = cases.find(c => c.id === caseId);
             if (updatedCase) {
@@ -329,6 +355,15 @@ const App: React.FC = () => {
             }
         }
     };
+
+    const handleUpdateTask = async (caseId: string, updatedTask: Task) => {
+        const targetCase = cases.find(c => c.id === caseId);
+        if (targetCase) {
+            const updatedTasks = targetCase.tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
+            await handleUpdateCase({ ...targetCase, tasks: updatedTasks });
+        }
+    };
+
 
     const handleOpenQuickNoteModal = (caseData: Case) => {
         setQuickNoteState({ isOpen: true, caseData });
@@ -879,6 +914,7 @@ const App: React.FC = () => {
                         caseData={selectedCase} 
                         onBack={handleBackToCases} 
                         onUpdateCase={handleUpdateCase}
+                        onUpdateTask={handleUpdateTask}
                         onDeleteCase={handleDeleteCase}
                         onAddTask={handleAddTask}
                         onToggleTask={handleToggleTask}
@@ -1025,7 +1061,7 @@ const App: React.FC = () => {
                                     cases={visibleCases} 
                                     professionals={professionals}
                                     generalInterventions={generalInterventions}
-                                    generalTasks={generalTasks}
+                                    generalTasks={currentUserGeneralTasks}
                                     onSelectCaseById={handleSelectCaseById} 
                                     onSetStatusFilter={setStatusFilter}
                                     onOpenAllTasks={() => setTasksPanelState({ mode: 'all' })}
@@ -1133,8 +1169,9 @@ const App: React.FC = () => {
                 onSetView={handleSetView}
                 isCaseView={!!selectedCase}
                 isSidebarCollapsed={isSidebarCollapsed}
-                currentUser={currentUser}
+                currentUser={currentUserProfessional}
                 onLogout={handleLogout}
+                onOpenProfile={() => setIsProfileModalOpen(true)}
             />
             <main className="pt-[calc(4rem+env(safe-area-inset-top))]">
                 {renderContent()}
@@ -1149,12 +1186,15 @@ const App: React.FC = () => {
                 onClose={() => setIsNewTaskModalOpen(false)}
                 onAddTask={handleAddTask}
                 cases={visibleCases}
+                professionals={professionals}
+                currentUser={currentUser}
             />
             <TasksSidePanel
                 mode={tasksPanelState.mode}
                 caseData={tasksPanelState.caseData}
                 allCases={visibleCases}
-                generalTasks={generalTasks}
+                generalTasks={currentUserGeneralTasks}
+                professionals={professionals}
                 onClose={() => setTasksPanelState({ mode: 'closed' })}
                 onAddTask={handleAddTask}
                 onToggleTask={handleToggleTask}
@@ -1178,6 +1218,14 @@ const App: React.FC = () => {
                 onSave={handleSaveQuickNote}
                 caseName={quickNoteState.caseData?.nickname ? `${quickNoteState.caseData?.name} (${quickNoteState.caseData?.nickname})` : quickNoteState.caseData?.name || ''}
             />
+            {currentUserProfessional && (
+                 <ProfileEditorModal
+                    isOpen={isProfileModalOpen}
+                    onClose={() => setIsProfileModalOpen(false)}
+                    onSave={handleSaveProfessional}
+                    currentUser={currentUserProfessional}
+                />
+            )}
         </div>
     );
 };

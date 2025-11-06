@@ -76,6 +76,7 @@ export interface Professional {
     email?: string;
     isSystemUser?: boolean; // Can this professional log in?
     systemRole?: 'admin' | 'tecnico'; // If they can log in, what is their role?
+    avatar?: string; // Base64 encoded image
 }
 
 export interface Task {
@@ -83,6 +84,7 @@ export interface Task {
     text: string;
     completed: boolean;
     createdBy?: string;
+    assignedTo?: string[]; // IDs of the professionals it's assigned to
 }
 
 export interface ToolField {
