@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Case, CaseStatus, Professional, ProfessionalRole, Intervention, InterventionType, InterventionStatus, DashboardView, Task } from '../types';
+import { Case, CaseStatus, Professional, ProfessionalRole, Intervention, InterventionType, InterventionStatus, DashboardView, Task, User } from '../types';
 import NewEventModal from './NewEventModal';
 import ExpiredActionsModal from './ExpiredActionsModal';
 import MissingProfessionalsModal from './MissingProfessionalsModal';
@@ -43,6 +43,7 @@ interface CaseStatsDashboardProps {
   onSaveIntervention: (intervention: Omit<Intervention, 'id'> | Intervention) => void;
   onDeleteIntervention: (intervention: Intervention) => void;
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
+  currentUser: User;
 }
 
 const getStatusColorClass = (status: CaseStatus): string => {
@@ -181,7 +182,7 @@ const PieChart: React.FC<{ data: { status: CaseStatus, count: number, color: str
 
 
 const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
-    const { cases, professionals, generalInterventions, generalTasks, onSelectCaseById, onSetStatusFilter, onOpenAllTasks, onSaveIntervention, onDeleteIntervention, requestConfirmation } = props;
+    const { cases, professionals, generalInterventions, generalTasks, onSelectCaseById, onSetStatusFilter, onOpenAllTasks, onSaveIntervention, onDeleteIntervention, requestConfirmation, currentUser } = props;
 
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
     const [isExpiredActionsModalOpen, setIsExpiredActionsModalOpen] = useState(false);
@@ -255,9 +256,15 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         const todayString = new Date().toDateString();
 
         return allInterventions
-            .filter(event => new Date(event.start).toDateString() === todayString)
+            .filter(event => {
+                const isOnToday = new Date(event.start).toDateString() === todayString;
+                if (!isOnToday) return false;
+
+                // All users, including admins, see only interventions they have created for the day.
+                return event.createdBy === currentUser.id;
+            })
             .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-    }, [cases, generalInterventions]);
+    }, [cases, generalInterventions, currentUser]);
 
     const expiredActions = useMemo(() => {
         const allInterventions = [

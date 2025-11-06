@@ -62,7 +62,7 @@ const Header: React.FC<HeaderProps> = ({ onNewCase, onNewTask, currentView, onSe
                     >
                         <IoCheckboxOutline className="w-6 h-6" />
                     </button>
-                    {currentView === 'cases' && currentUser?.role === 'admin' && (
+                    {currentView === 'cases' && (
                         <button
                             onClick={onNewCase}
                             className="bg-teal-600 text-white w-10 h-10 rounded-lg hover:bg-teal-700 flex items-center justify-center transition-colors"

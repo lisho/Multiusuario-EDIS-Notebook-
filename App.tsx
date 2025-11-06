@@ -139,6 +139,17 @@ const App: React.FC = () => {
 
                         caseData.interventionRecords = caseData.interventionRecords.map(r => ({...r, createdBy: r.createdBy || lishoId}));
                     }
+                     // Data migration: ensure creator is always in professionalIds
+                    if (caseData.createdBy) {
+                        if (!Array.isArray(caseData.professionalIds)) {
+                            caseData.professionalIds = [];
+                        }
+                        if (!caseData.professionalIds.includes(caseData.createdBy)) {
+                            // This will add the creator to the list if they aren't there.
+                            // This handles old cases created before the logic change in handleAddCase
+                            caseData.professionalIds.push(caseData.createdBy);
+                        }
+                    }
                     return caseData;
                 });
                 setCases(casesList.sort(caseSorter));
@@ -180,8 +191,8 @@ const App: React.FC = () => {
         if (currentUser.role === 'admin') {
             return cases; // Admins see all cases
         }
-        // Technicians only see cases they created
-        return cases.filter(c => c.createdBy === currentUser.id);
+        // Technicians only see cases they are assigned to
+        return cases.filter(c => c.professionalIds?.includes(currentUser.id));
     }, [cases, currentUser]);
 
     const handleSetView = (view: 'cases' | 'admin' | 'calendar') => {
@@ -206,7 +217,7 @@ const App: React.FC = () => {
             tasks: [],
             nickname: '',
             dni: '', phone: '', email: '', address: '', profileNotes: '', myNotes: [], familyGrid: [], interventionRecords: [],
-            professionalIds: [],
+            professionalIds: [currentUser.id],
             isPinned: false,
             orderIndex: Date.now(),
             createdBy: currentUser.id,
@@ -283,8 +294,8 @@ const App: React.FC = () => {
     const handleSelectCaseById = (caseId: string, view: DashboardView = 'profile') => {
         const caseToSelect = cases.find(c => c.id === caseId);
         if (caseToSelect) {
-             // Security check: Only allow selection if admin or creator
-            if (currentUser?.role === 'admin' || caseToSelect.createdBy === currentUser?.id) {
+             // Security check: Only allow selection if admin or assigned professional
+            if (currentUser && (currentUser.role === 'admin' || caseToSelect.professionalIds?.includes(currentUser.id))) {
                 setCurrentView('cases');
                 setInitialDashboardView(view);
                 setSelectedCase(caseToSelect);
@@ -1021,6 +1032,7 @@ const App: React.FC = () => {
                                     onSaveIntervention={handleSaveIntervention}
                                     onDeleteIntervention={handleDeleteIntervention}
                                     requestConfirmation={requestConfirmation}
+                                    currentUser={currentUser}
                                 />
                             </div>
                         )}
@@ -1093,15 +1105,13 @@ const App: React.FC = () => {
                             <div className="text-center py-20 px-4 bg-white rounded-lg border-2 border-dashed border-slate-200">
                                 <h2 className="text-xl font-semibold text-slate-700">{getNoResultsMessage().title}</h2>
                                 <p className="text-slate-500 mt-2">{getNoResultsMessage().message}</p>
-                                {currentUser.role === 'admin' && (
-                                    <button
-                                        onClick={() => setIsNewCaseModalOpen(true)}
-                                        className="mt-6 inline-flex items-center justify-center bg-teal-600 text-white w-14 h-14 rounded-full hover:bg-teal-700 font-semibold shadow-lg transition-transform hover:scale-105"
-                                        title="Crear Nuevo Caso"
-                                    >
-                                        <IoAddOutline className="text-3xl" />
-                                    </button>
-                                )}
+                                <button
+                                    onClick={() => setIsNewCaseModalOpen(true)}
+                                    className="mt-6 inline-flex items-center justify-center bg-teal-600 text-white w-14 h-14 rounded-full hover:bg-teal-700 font-semibold shadow-lg transition-transform hover:scale-105"
+                                    title="Crear Nuevo Caso"
+                                >
+                                    <IoAddOutline className="text-3xl" />
+                                </button>
                             </div>
                         )}
                     </div>

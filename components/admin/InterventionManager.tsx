@@ -43,13 +43,14 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
     const [bulkRegister, setBulkRegister] = useState(false);
     const [newTypeSelections, setNewTypeSelections] = useState<Record<string, InterventionType>>({});
     const [individualTypeChanges, setIndividualTypeChanges] = useState<Record<string, InterventionType>>({});
+    const [hasAppliedFilters, setHasAppliedFilters] = useState(false);
 
 
     const caseMap = useMemo(() => new Map(cases.map(c => [c.id, c])), [cases]);
     
     const allPresentInterventionTypes = useMemo(() => {
         const types = new Set(allInterventions.map(i => i.interventionType as string));
-        // FIX: Explicitly type sort parameters to resolve TS inference error.
+        // Fix: Explicitly type the parameters of the sort function to avoid potential type inference issues.
         return Array.from(types).sort((a: string, b: string) => a.localeCompare(b));
     }, [allInterventions]);
     
@@ -169,7 +170,8 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
 
     const { unassignedSelected, assignedSelected, canBeRegistered, canBeUnregistered } = useMemo(() => {
         const selected = allInterventions.filter(i => selectedInterventions.has(i.id));
-        // FIX: The `unknown` type error for `unassignedSelected.length` is resolved by explicitly typing these arrays.
+        // FIX: Explicitly typing `unassignedSelected` and `assignedSelected` as `Intervention[]` resolves a type inference issue
+        // where TypeScript treated them as `unknown`, causing an error when accessing properties like `.length`.
         const unassignedSelected: Intervention[] = selected.filter(i => !i.caseId);
         const assignedSelected: Intervention[] = selected.filter(i => !!i.caseId);
         const canBeRegistered = assignedSelected.some(i => !i.isRegistered);
@@ -252,6 +254,8 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
         setFilterType('');
         setAssignmentFilter('unassigned');
         setRegistrationFilter('all');
+        setHasAppliedFilters(false);
+        setSelectedInterventions(new Set());
     };
     
     const handleToggleRegistration = (intervention: Intervention) => {
@@ -487,14 +491,21 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
                         {allPresentInterventionTypes.map(type => <option key={type} value={type}>{type}</option>)}
                     </select>
                 </div>
-                 {areFiltersActive && (
+                 <button 
+                    onClick={() => setHasAppliedFilters(true)}
+                    className="px-4 py-2 text-sm text-white bg-teal-600 rounded-lg hover:bg-teal-700 font-semibold flex items-center gap-2"
+                >
+                    <IoSearchOutline />
+                    Aplicar Filtros
+                </button>
+                { (areFiltersActive || hasAppliedFilters) && (
                     <button onClick={handleClearFilters} className="flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-900">
                         <IoCloseCircleOutline className="text-lg"/> Limpiar Filtros
                     </button>
                 )}
             </div>
 
-            {selectedInterventions.size > 0 && (
+            {hasAppliedFilters && selectedInterventions.size > 0 && (
                 <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg flex flex-wrap items-center gap-x-6 gap-y-3 sticky top-0 z-10">
                     <span className="font-semibold text-sm text-teal-800">{selectedInterventions.size} seleccionada(s)</span>
                     {unassignedSelected.length > 0 && (
@@ -542,126 +553,133 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
             )}
 
             <div className="space-y-4 pt-4 border-t border-slate-200 max-h-[60vh] overflow-y-auto pr-2">
-                {filteredAndSortedInterventions.length > 0 ? (
-                    <>
-                        <div className="flex items-center gap-3 pb-2 border-b border-slate-200">
-                            <input
-                                type="checkbox"
-                                checked={isAllSelected}
-                                onChange={e => handleToggleSelectAll(e.target.checked)}
-                                className="h-5 w-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                            />
-                            <label className="text-sm font-semibold text-slate-600">Seleccionar todo ({filteredAndSortedInterventions.length})</label>
-                        </div>
-                        {filteredAndSortedInterventions.map(inter => (
-                            <div key={inter.id} className={`p-4 rounded-md border ${selectedInterventions.has(inter.id) ? 'bg-teal-50/50 border-teal-300' : 'bg-slate-50 border-slate-200'}`}>
-                                <div className="flex items-start gap-4">
+                {hasAppliedFilters ? (
+                     <>
+                        {filteredAndSortedInterventions.length > 0 ? (
+                            <>
+                                <div className="flex items-center gap-3 pb-2 border-b border-slate-200">
                                     <input
                                         type="checkbox"
-                                        checked={selectedInterventions.has(inter.id)}
-                                        onChange={e => handleToggleSelection(inter.id, e.target.checked)}
-                                        className="mt-1 h-5 w-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                        checked={isAllSelected}
+                                        onChange={e => handleToggleSelectAll(e.target.checked)}
+                                        className="h-5 w-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                                     />
-                                    <div className="flex-grow">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <p className="text-xs text-slate-500">{new Date(inter.start).toLocaleString('es-ES', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Europe/Madrid' })}</p>
-                                                <h3 className="font-semibold text-slate-800">{inter.title}</h3>
-                                                {inter.notes && <p className="text-sm text-slate-600 mt-2 whitespace-pre-wrap">{inter.notes}</p>}
-                                            </div>
-                                             <button 
-                                                onClick={() => onEditIntervention(inter)}
-                                                className="text-slate-400 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors flex-shrink-0 ml-2" 
-                                                title="Editar intervención"
-                                            >
-                                                <IoPencilOutline className="text-lg" />
-                                            </button>
-                                        </div>
-                                        
-                                        {(inter.interventionType as string) === 'Tarea' && (
-                                            <div className="mt-3 pt-3 border-t border-amber-200 flex flex-wrap items-center gap-3 bg-amber-50 p-3 rounded-md">
-                                                <IoWarningOutline className="text-amber-600 text-xl flex-shrink-0" />
-                                                <label className="text-sm font-semibold text-amber-800">Reclasificar como:</label>
-                                                <select
-                                                    value={individualTypeChanges[inter.id] || ''}
-                                                    onChange={(e) => handleIndividualTypeChange(inter.id, e.target.value as InterventionType)}
-                                                    className="flex-grow min-w-[200px] px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-white border-slate-300 focus:ring-teal-500 text-slate-900"
-                                                >
-                                                    <option value="">-- Seleccionar tipo válido --</option>
-                                                    {allValidInterventionTypes.map(type => (
-                                                        <option key={type} value={type}>{type}</option>
-                                                    ))}
-                                                </select>
-                                                <button
-                                                    onClick={() => handleSaveIndividualTypeChange(inter)}
-                                                    disabled={!individualTypeChanges[inter.id]}
-                                                    className="p-2.5 text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
-                                                    title="Guardar cambio de tipo"
-                                                >
-                                                    <IoSaveOutline className="text-xl"/>
-                                                </button>
-                                            </div>
-                                        )}
-                                        
-                                        {inter.caseId ? (
-                                            <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between items-center">
-                                                <span className="flex items-center gap-1 font-semibold text-teal-700 text-sm">
-                                                    <IoPersonCircleOutline /> {caseMap.get(inter.caseId)?.name || 'Caso no encontrado'}
-                                                </span>
-                                                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={inter.isRegistered}
-                                                        onChange={() => handleToggleRegistration(inter)}
-                                                        className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                                                    />
-                                                    <IoBookOutline /> Registrar en Cuaderno
-                                                </label>
-                                            </div>
-                                        ) : (
-                                            <div className="mt-3 pt-3 border-t border-slate-200 flex flex-wrap items-center gap-3">
-                                                <select
-                                                    value={assignments[inter.id]?.caseId || ''}
-                                                    onChange={(e) => handleAssignmentChange(inter.id, e.target.value, 'caseId')}
-                                                    className="flex-grow min-w-[200px] px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-white border-slate-300 focus:ring-teal-500 text-slate-900"
-                                                >
-                                                    <option value="">-- Asignar a un caso --</option>
-                                                    {cases.map(c => (
-                                                        <option key={c.id} value={c.id}>{c.name}{c.nickname ? ` (${c.nickname})` : ''}</option>
-                                                    ))}
-                                                </select>
-                                                <label className="flex items-center gap-1.5 cursor-pointer text-sm font-medium text-slate-700 whitespace-nowrap" title={!assignments[inter.id]?.caseId ? "Primero selecciona un caso para poder registrar la intervención" : "Registrar en el Cuaderno de Campo al asignar"}>
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={assignments[inter.id]?.isRegistered || false}
-                                                        onChange={(e) => handleAssignmentChange(inter.id, e.target.checked, 'isRegistered')}
-                                                        disabled={!assignments[inter.id]?.caseId}
-                                                        className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    />
-                                                    <IoBookOutline/> Registrar
-                                                </label>
-                                                <button
-                                                    onClick={() => handleSaveAssignment(inter)}
-                                                    disabled={!assignments[inter.id]?.caseId}
-                                                    className="p-2.5 text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
-                                                    title="Guardar asignación"
-                                                >
-                                                    <IoSaveOutline className="text-xl"/>
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
+                                    <label className="text-sm font-semibold text-slate-600">Seleccionar todo ({filteredAndSortedInterventions.length})</label>
                                 </div>
-                            </div>
-                        ))}
+                                {filteredAndSortedInterventions.map(inter => (
+                                    <div key={inter.id} className={`p-4 rounded-md border ${selectedInterventions.has(inter.id) ? 'bg-teal-50/50 border-teal-300' : 'bg-slate-50 border-slate-200'}`}>
+                                        <div className="flex items-start gap-4">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedInterventions.has(inter.id)}
+                                                onChange={e => handleToggleSelection(inter.id, e.target.checked)}
+                                                className="mt-1 h-5 w-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                            />
+                                            <div className="flex-grow">
+                                                <div className="flex justify-between items-start">
+                                                    <div>
+                                                        <p className="text-xs text-slate-500">{new Date(inter.start).toLocaleString('es-ES', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Europe/Madrid' })}</p>
+                                                        <h3 className="font-semibold text-slate-800">{inter.title}</h3>
+                                                        {inter.notes && <p className="text-sm text-slate-600 mt-2 whitespace-pre-wrap">{inter.notes}</p>}
+                                                    </div>
+                                                     <button 
+                                                        onClick={() => onEditIntervention(inter)}
+                                                        className="text-slate-400 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors flex-shrink-0 ml-2" 
+                                                        title="Editar intervención"
+                                                    >
+                                                        <IoPencilOutline className="text-lg" />
+                                                    </button>
+                                                </div>
+                                                
+                                                {(inter.interventionType as string) === 'Tarea' && (
+                                                    <div className="mt-3 pt-3 border-t border-amber-200 flex flex-wrap items-center gap-3 bg-amber-50 p-3 rounded-md">
+                                                        <IoWarningOutline className="text-amber-600 text-xl flex-shrink-0" />
+                                                        <label className="text-sm font-semibold text-amber-800">Reclasificar como:</label>
+                                                        <select
+                                                            value={individualTypeChanges[inter.id] || ''}
+                                                            onChange={(e) => handleIndividualTypeChange(inter.id, e.target.value as InterventionType)}
+                                                            className="flex-grow min-w-[200px] px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-white border-slate-300 focus:ring-teal-500 text-slate-900"
+                                                        >
+                                                            <option value="">-- Seleccionar tipo válido --</option>
+                                                            {allValidInterventionTypes.map(type => (
+                                                                <option key={type} value={type}>{type}</option>
+                                                            ))}
+                                                        </select>
+                                                        <button
+                                                            onClick={() => handleSaveIndividualTypeChange(inter)}
+                                                            disabled={!individualTypeChanges[inter.id]}
+                                                            className="p-2.5 text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                                                            title="Guardar cambio de tipo"
+                                                        >
+                                                            <IoSaveOutline className="text-xl"/>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                
+                                                {inter.caseId ? (
+                                                    <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between items-center">
+                                                        <span className="flex items-center gap-1 font-semibold text-teal-700 text-sm">
+                                                            <IoPersonCircleOutline /> {caseMap.get(inter.caseId)?.name || 'Caso no encontrado'}
+                                                        </span>
+                                                        <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={inter.isRegistered}
+                                                                onChange={() => handleToggleRegistration(inter)}
+                                                                className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                            />
+                                                            <IoBookOutline /> Registrar en Cuaderno
+                                                        </label>
+                                                    </div>
+                                                ) : (
+                                                    <div className="mt-3 pt-3 border-t border-slate-200 flex flex-wrap items-center gap-3">
+                                                        <select
+                                                            value={assignments[inter.id]?.caseId || ''}
+                                                            onChange={(e) => handleAssignmentChange(inter.id, e.target.value, 'caseId')}
+                                                            className="flex-grow min-w-[200px] px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-white border-slate-300 focus:ring-teal-500 text-slate-900"
+                                                        >
+                                                            <option value="">-- Asignar a un caso --</option>
+                                                            {cases.map(c => (
+                                                                <option key={c.id} value={c.id}>{c.name}{c.nickname ? ` (${c.nickname})` : ''}</option>
+                                                            ))}
+                                                        </select>
+                                                        <label className="flex items-center gap-1.5 cursor-pointer text-sm font-medium text-slate-700 whitespace-nowrap" title={!assignments[inter.id]?.caseId ? "Primero selecciona un caso para poder registrar la intervención" : "Registrar en el Cuaderno de Campo al asignar"}>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={assignments[inter.id]?.isRegistered || false}
+                                                                onChange={(e) => handleAssignmentChange(inter.id, e.target.checked, 'isRegistered')}
+                                                                disabled={!assignments[inter.id]?.caseId}
+                                                                className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            />
+                                                            <IoBookOutline/> Registrar
+                                                        </label>
+                                                        <button
+                                                            onClick={() => handleSaveAssignment(inter)}
+                                                            disabled={!assignments[inter.id]?.caseId}
+                                                            className="p-2.5 text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                                                            title="Guardar asignación"
+                                                        >
+                                                            <IoSaveOutline className="text-xl"/>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </>
+                        ) : (
+                            <p className="text-center text-slate-500 py-6">
+                                No se encontraron intervenciones que coincidan con tus filtros.
+                            </p>
+                        )}
                     </>
                 ) : (
-                    <p className="text-center text-slate-500 py-6">
-                        {areFiltersActive 
-                            ? "No se encontraron intervenciones que coincidan con tus filtros."
-                            : "No hay intervenciones para mostrar."
-                        }
-                    </p>
+                    <div className="text-center text-slate-500 py-12 px-6 bg-slate-50 rounded-lg">
+                        <IoSearchOutline className="mx-auto text-5xl text-slate-400 mb-4" />
+                        <h3 className="font-semibold text-slate-600 text-lg">Gestionar Intervenciones</h3>
+                        <p className="mt-1">Usa los filtros de arriba y pulsa "Aplicar Filtros" para buscar y gestionar las intervenciones del sistema.</p>
+                    </div>
                 )}
             </div>
         </div>

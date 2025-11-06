@@ -96,7 +96,11 @@ const CaseCard: React.FC<CaseCardProps> = (props) => {
     const pendingTasksCount = caseData.tasks.filter(t => !t.completed).length;
     const footerStyles = getFooterStyles(caseData.status);
 
-    const assignedProfessionals = professionals.filter(p => caseData.professionalIds?.includes(p.id));
+    const assignedProfessionals = professionals
+        .filter(p => caseData.professionalIds?.includes(p.id))
+        // Exclude admins from being displayed as assigned professionals on the card.
+        .filter(p => p.systemRole !== 'admin');
+        
     const socialWorker = assignedProfessionals.find(p => p.role === ProfessionalRole.SocialWorker);
     const edisTechnicians = assignedProfessionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
 
