@@ -2,8 +2,9 @@ import React from 'react';
 import { Case, CaseStatus, Professional, DashboardView, ProfessionalRole } from '../types';
 import {
     IoCheckboxOutline, IoAddCircleOutline,
-    IoPinOutline, IoPin, IoBookOutline
+    IoBookOutline
 } from 'react-icons/io5';
+import { BsPinAngle, BsPinAngleFill } from 'react-icons/bs';
 
 interface CaseCardProps {
     caseData: Case;
@@ -89,7 +90,7 @@ const CaseCard: React.FC<CaseCardProps> = ({
                     </button>
                     {caseData.status !== CaseStatus.Closed && (
                         <button onClick={handleTogglePin} className="text-slate-400 hover:text-teal-600 p-1 -mr-2 -mt-2">
-                            {caseData.isPinned ? <IoPin className="text-teal-600"/> : <IoPinOutline />}
+                            {caseData.isPinned ? <BsPinAngleFill className="text-teal-600"/> : <BsPinAngle />}
                         </button>
                     )}
                 </div>
