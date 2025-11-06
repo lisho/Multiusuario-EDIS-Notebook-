@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Case, Intervention, InterventionType, DashboardView } from '../types';
+import { Case, Intervention, InterventionType, DashboardView, User } from '../types';
 import NewEventModal from './NewEventModal';
 import { IoAddOutline, IoChevronBackOutline, IoChevronForwardOutline } from 'react-icons/io5';
 
@@ -10,6 +10,7 @@ interface CalendarViewProps {
     onDeleteIntervention: (intervention: Intervention) => void;
     onSelectCaseById: (caseId: string, view: DashboardView) => void;
     requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
+    currentUser: User;
 }
 
 type CalendarViewType = 'month' | 'week' | 'day';
@@ -52,7 +53,7 @@ const isDateInRange = (date: Date, start: Date, end: Date) => {
     return checkDate >= startDate && checkDate <= endDate;
 };
 
-const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions, onSaveIntervention, onDeleteIntervention, onSelectCaseById, requestConfirmation }) => {
+const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions, onSaveIntervention, onDeleteIntervention, onSelectCaseById, requestConfirmation, currentUser }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view, setView] = useState<CalendarViewType>('week');
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
@@ -63,8 +64,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     
     const allInterventions = useMemo(() => {
         const caseInterventions = cases.flatMap(c => c.interventions);
-        return [...caseInterventions, ...generalInterventions];
-    }, [cases, generalInterventions]);
+        const combined = [...caseInterventions, ...generalInterventions];
+        // Filter interventions for the current user
+        return combined.filter(i => i.createdBy === currentUser.id);
+    }, [cases, generalInterventions, currentUser]);
 
 
     const handlePrev = () => {

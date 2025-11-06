@@ -16,6 +16,8 @@ const getInitialProfessional = (role: ProfessionalRole): Omit<Professional, 'id'
     ceas: '',
     phone: '',
     email: '',
+    isSystemUser: role === ProfessionalRole.EdisTechnician,
+    systemRole: 'tecnico',
 });
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -49,8 +51,21 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
   }, [isOpen, initialData, defaultRole]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setProfessional(prev => ({ ...prev, [name]: value }));
+    const { name, value, type } = e.target;
+    const checked = (e.target as HTMLInputElement).checked;
+
+    setProfessional(prev => {
+        const newState = { ...prev, [name]: type === 'checkbox' ? checked : value };
+        if (name === 'role' && value === ProfessionalRole.SocialWorker) {
+            newState.isSystemUser = false;
+            newState.systemRole = undefined;
+        }
+        if (name === 'isSystemUser' && !checked) {
+            newState.systemRole = 'tecnico'; // Reset role to default when access is disabled
+        }
+        return newState;
+    });
+
     if (errors[name as keyof typeof errors]) {
         setErrors(prev => ({ ...prev, [name]: undefined }));
     }
@@ -91,13 +106,21 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
         <div className="flex justify-between items-center p-4 border-b border-slate-200">
             <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                 <IoPeopleOutline className="text-teal-600"/>
-                {isEditing ? `Editar ${professional.role}` : `Nuevo/a ${professional.role}`}
+                {isEditing ? `Editar Profesional` : `Nuevo/a Profesional`}
             </h2>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-800">
             <IoCloseOutline className="text-3xl" />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <div>
+                <label htmlFor="role" className="block text-slate-700 font-semibold mb-2">Rol Profesional</label>
+                <select id="role" name="role" value={professional.role} onChange={handleChange} className={formInputStyle(false)}>
+                    {Object.values(ProfessionalRole).map(role => (
+                        <option key={role} value={role}>{role}</option>
+                    ))}
+                </select>
+            </div>
             <div>
               <label htmlFor="name" className="block text-slate-700 font-semibold mb-2">Nombre Completo</label>
               <input id="name" name="name" type="text" value={professional.name} onChange={handleChange} className={formInputStyle(!!errors.name)} placeholder="Ej. María López" required autoFocus/>
@@ -125,6 +148,25 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
                    {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
                 </div>
               </>
+            )}
+
+            {professional.role === ProfessionalRole.EdisTechnician && (
+                <div className="mt-4 pt-4 border-t border-slate-200 space-y-4">
+                    <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                        <input type="checkbox" name="isSystemUser" checked={!!professional.isSystemUser} onChange={handleChange} className="h-5 w-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
+                        Habilitar como usuario del sistema
+                    </label>
+
+                    {professional.isSystemUser && (
+                        <div>
+                            <label htmlFor="systemRole" className="block text-slate-700 font-semibold mb-2">Rol del Sistema</label>
+                            <select id="systemRole" name="systemRole" value={professional.systemRole || 'tecnico'} onChange={handleChange} className={formInputStyle(false)}>
+                                <option value="tecnico">Técnico</option>
+                                <option value="admin">Administrador</option>
+                            </select>
+                        </div>
+                    )}
+                </div>
             )}
         </form>
          <div className="flex justify-end gap-4 p-4 mt-auto border-t border-slate-200 bg-slate-50 rounded-b-lg">

@@ -1,6 +1,7 @@
 import React from 'react';
 import { FiFolder, FiCalendar, FiSettings, FiFolderPlus } from 'react-icons/fi';
-import { IoCheckboxOutline } from 'react-icons/io5';
+import { IoCheckboxOutline, IoLogOutOutline } from 'react-icons/io5';
+import { User } from '../types';
 
 interface HeaderProps {
     onNewCase: () => void;
@@ -9,15 +10,17 @@ interface HeaderProps {
     onSetView: (view: 'cases' | 'admin' | 'calendar') => void;
     isCaseView?: boolean;
     isSidebarCollapsed?: boolean;
+    currentUser: User | null;
+    onLogout: () => void;
 }
 
 const navItems = [
-    { view: 'cases' as const, label: 'Mesa de Trabajo', icon: FiFolder },
-    { view: 'calendar' as const, label: 'Calendario', icon: FiCalendar },
-    { view: 'admin' as const, label: 'Administración', icon: FiSettings }
+    { view: 'cases' as const, label: 'Mesa de Trabajo', icon: FiFolder, adminOnly: false },
+    { view: 'calendar' as const, label: 'Calendario', icon: FiCalendar, adminOnly: false },
+    { view: 'admin' as const, label: 'Administración', icon: FiSettings, adminOnly: true }
 ];
 
-const Header: React.FC<HeaderProps> = ({ onNewCase, onNewTask, currentView, onSetView, isCaseView, isSidebarCollapsed }) => {
+const Header: React.FC<HeaderProps> = ({ onNewCase, onNewTask, currentView, onSetView, isCaseView, isSidebarCollapsed, currentUser, onLogout }) => {
     
     const navButtonStyle = "text-sm font-semibold rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500";
     const activeStyle = "bg-white text-teal-700 shadow-sm";
@@ -33,17 +36,22 @@ const Header: React.FC<HeaderProps> = ({ onNewCase, onNewTask, currentView, onSe
                 <div className="flex items-center gap-2 sm:gap-8">
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-800">Cuaderno de Campo</h1>
                     <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-                        {navItems.map(({ view, label, icon: Icon }) => (
-                             <button 
-                                key={view}
-                                onClick={() => onSetView(view)} 
-                                className={`${navButtonStyle} flex items-center justify-center gap-2 py-2 sm:px-4 w-10 sm:w-auto h-10 sm:h-auto ${currentView === view ? activeStyle : inactiveStyle}`}
-                                title={label}
-                            >
-                                <Icon className="text-xl flex-shrink-0" />
-                                <span className="hidden sm:inline">{label}</span>
-                            </button>
-                        ))}
+                        {navItems.map(({ view, label, icon: Icon, adminOnly }) => {
+                             if (adminOnly && currentUser?.role !== 'admin') {
+                                return null;
+                             }
+                             return (
+                                 <button 
+                                    key={view}
+                                    onClick={() => onSetView(view)} 
+                                    className={`${navButtonStyle} flex items-center justify-center gap-2 py-2 sm:px-4 w-10 sm:w-auto h-10 sm:h-auto ${currentView === view ? activeStyle : inactiveStyle}`}
+                                    title={label}
+                                >
+                                    <Icon className="text-xl flex-shrink-0" />
+                                    <span className="hidden sm:inline">{label}</span>
+                                </button>
+                             );
+                        })}
                     </nav>
                 </div>
                 <div className="flex items-center gap-2">
@@ -54,7 +62,7 @@ const Header: React.FC<HeaderProps> = ({ onNewCase, onNewTask, currentView, onSe
                     >
                         <IoCheckboxOutline className="w-6 h-6" />
                     </button>
-                    {currentView === 'cases' && (
+                    {currentView === 'cases' && currentUser?.role === 'admin' && (
                         <button
                             onClick={onNewCase}
                             className="bg-teal-600 text-white w-10 h-10 rounded-lg hover:bg-teal-700 flex items-center justify-center transition-colors"
@@ -63,6 +71,12 @@ const Header: React.FC<HeaderProps> = ({ onNewCase, onNewTask, currentView, onSe
                             <FiFolderPlus className="w-7 h-7" />
                         </button>
                     )}
+                    <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
+                        <span className="text-sm font-semibold text-slate-700 hidden sm:inline">{currentUser?.name}</span>
+                        <button onClick={onLogout} className="text-slate-500 w-10 h-10 rounded-lg hover:bg-slate-100 flex items-center justify-center transition-colors" title="Cerrar Sesión">
+                            <IoLogOutOutline className="w-6 h-6" />
+                        </button>
+                    </div>
                 </div>
             </div>
         </header>

@@ -1,5 +1,11 @@
 import React from 'react';
 
+export interface User {
+    id: string; // Corresponds to the Professional ID
+    name: string;
+    role: 'admin' | 'tecnico';
+}
+
 export enum CaseStatus {
     PendingReferral = 'Derivación Pendiente',
     Welcome = 'Acogida',
@@ -68,12 +74,15 @@ export interface Professional {
     ceas?: string;
     phone?: string;
     email?: string;
+    isSystemUser?: boolean; // Can this professional log in?
+    systemRole?: 'admin' | 'tecnico'; // If they can log in, what is their role?
 }
 
 export interface Task {
     id: string;
     text: string;
     completed: boolean;
+    createdBy?: string;
 }
 
 export interface ToolField {
@@ -104,6 +113,7 @@ export interface Intervention {
     caseId: string | null; // null if it's a general intervention
     status: InterventionStatus;
     cancellationTime?: string; // ISO string
+    createdBy?: string;
 }
 
 export interface InterventionRecord {
@@ -113,6 +123,7 @@ export interface InterventionRecord {
     moment: InterventionMoment;
     date: string; // ISO string
     answers: Record<string, any>;
+    createdBy?: string;
 }
 
 export interface FamilyMember {
@@ -133,6 +144,7 @@ export interface MyNote {
     content: string;
     color: 'yellow' | 'pink' | 'blue' | 'green';
     createdAt: string; // ISO string
+    createdBy?: string;
 }
 
 export interface Case {
@@ -154,6 +166,7 @@ export interface Case {
     professionalIds?: string[];
     isPinned?: boolean;
     orderIndex?: number;
+    createdBy?: string;
 }
 
 export type DashboardView = 'profile' | 'welcome' | 'tasks' | 'diagnosis' | 'planning' | 'accompaniment' | 'reports' | 'notebook' | 'professionals' | 'myNotes';

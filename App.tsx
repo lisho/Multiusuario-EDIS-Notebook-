@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Header from './components/Header';
 import CaseDashboard from './components/CaseDashboard';
 import CaseCard from './components/CaseCard';
@@ -11,7 +11,8 @@ import TasksSidePanel from './components/TasksSidePanel';
 import ConfirmationModal from './components/ConfirmationModal';
 import NewTaskModal from './components/NewTaskModal';
 import QuickNoteModal from './components/QuickNoteModal';
-import { Case, CaseStatus, Task, AdminTool, Intervention, InterventionRecord, Professional, DashboardView, MyNote } from './types';
+import Login from './components/Login';
+import { Case, CaseStatus, Task, AdminTool, Intervention, InterventionRecord, Professional, DashboardView, MyNote, User, ProfessionalRole } from './types';
 import { db } from './services/firebase';
 import { collection, query, getDocs, addDoc, doc, updateDoc, deleteDoc, writeBatch, setDoc } from 'firebase/firestore';
 import { IoAddOutline, IoCloseCircleOutline, IoSearchOutline, IoChevronDownOutline } from 'react-icons/io5';
@@ -45,6 +46,7 @@ const App: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [isClosedCasesVisible, setIsClosedCasesVisible] = useState(false);
     const [draggedItem, setDraggedItem] = useState<Case | null>(null);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [confirmationState, setConfirmationState] = useState<{
         isOpen: boolean;
         title: string;
@@ -64,32 +66,102 @@ const App: React.FC = () => {
         setConfirmationState(null);
     };
 
+    const handleLogin = (professional: Professional) => {
+        if (!professional.isSystemUser || !professional.systemRole) return;
+        const user: User = {
+            id: professional.id,
+            name: professional.name,
+            role: professional.systemRole,
+        };
+        setCurrentUser(user);
+    };
+
+    const handleLogout = () => {
+        setCurrentUser(null);
+    };
+
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                // FIX: Removed composite orderBy to prevent Firestore index errors. Sorting is now done on the client.
+                const professionalsSnapshot = await getDocs(collection(db, "professionals"));
+                const professionalsList = professionalsSnapshot.docs.map(doc => {
+                    const data = doc.data();
+                    const prof: Professional = { id: doc.id, ...data } as Professional;
+    
+                    // Data migration for existing professionals to add user management fields
+                    if (prof.role === ProfessionalRole.EdisTechnician) {
+                        if (prof.isSystemUser === undefined) {
+                            prof.isSystemUser = true; // All existing technicians could log in
+                        }
+                        if (prof.isSystemUser && !prof.systemRole) {
+                            // The previous hardcoded logic is now a one-time migration
+                            prof.systemRole = prof.name === 'Lisho' ? 'admin' : 'tecnico';
+                        }
+                    } else {
+                         if (prof.isSystemUser === undefined) {
+                            prof.isSystemUser = false; // Social workers are not system users by default
+                        }
+                    }
+                    return prof;
+                }) as Professional[];
+                setProfessionals(professionalsList);
+    
+                const lisho = professionalsList.find(p => p.name === 'Lisho');
+                if (!lisho) {
+                    console.warn("User 'Lisho' not found. Cannot migrate old data.");
+                }
+                const lishoId = lisho?.id;
+
                 const casesQuery = query(collection(db, "cases"));
                 const casesSnapshot = await getDocs(casesQuery);
-                const casesList = casesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Case[];
+                const casesList = casesSnapshot.docs.map(doc => {
+                    const caseData = { id: doc.id, ...doc.data() } as Case;
+                    if (lishoId) {
+                        caseData.createdBy = caseData.createdBy || lishoId;
+                        caseData.interventions = caseData.interventions.map(i => ({...i, createdBy: i.createdBy || lishoId}));
+                        caseData.tasks = caseData.tasks.map(t => ({...t, createdBy: t.createdBy || lishoId}));
+                        
+                        let processedNotes: MyNote[] = [];
+                        if (Array.isArray(caseData.myNotes)) {
+                            processedNotes = caseData.myNotes.map(n => ({ ...n, createdBy: n.createdBy || lishoId }));
+                        } else if (typeof caseData.myNotes === 'string' && (caseData.myNotes as string).trim() !== '') {
+                            // This handles legacy data where myNotes was a single string.
+                            processedNotes = [{
+                                id: `note-${doc.id}-${Date.now()}`,
+                                content: caseData.myNotes as string,
+                                color: 'yellow',
+                                createdAt: new Date().toISOString(),
+                                createdBy: lishoId
+                            }];
+                        }
+                        caseData.myNotes = processedNotes;
+
+                        caseData.interventionRecords = caseData.interventionRecords.map(r => ({...r, createdBy: r.createdBy || lishoId}));
+                    }
+                    return caseData;
+                });
                 setCases(casesList.sort(caseSorter));
 
                 const toolsSnapshot = await getDocs(collection(db, "adminTools"));
                 const toolsList = toolsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AdminTool[];
                 setAdminTools(toolsList);
                 
-                const professionalsSnapshot = await getDocs(collection(db, "professionals"));
-                const professionalsList = professionalsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Professional[];
-                setProfessionals(professionalsList);
-
                 const generalInterventionsSnapshot = await getDocs(collection(db, "generalInterventions"));
-                const generalInterventionsList = generalInterventionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Intervention[];
+                const generalInterventionsList = generalInterventionsSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    createdBy: doc.data().createdBy || lishoId,
+                })) as Intervention[];
                 setGeneralInterventions(generalInterventionsList);
                 
                 const generalTasksSnapshot = await getDocs(collection(db, "generalTasks"));
-                const generalTasksList = generalTasksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Task[];
+                const generalTasksList = generalTasksSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    createdBy: doc.data().createdBy || lishoId,
+                })) as Task[];
                 setGeneralTasks(generalTasksList);
-
 
             } catch (error) {
                 console.error("Error fetching data from Firestore: ", error);
@@ -100,6 +172,17 @@ const App: React.FC = () => {
 
         fetchData();
     }, []);
+
+    const visibleCases = useMemo(() => {
+        if (!currentUser) {
+            return [];
+        }
+        if (currentUser.role === 'admin') {
+            return cases; // Admins see all cases
+        }
+        // Technicians only see cases they created
+        return cases.filter(c => c.createdBy === currentUser.id);
+    }, [cases, currentUser]);
 
     const handleSetView = (view: 'cases' | 'admin' | 'calendar') => {
         setSelectedCase(null);
@@ -114,6 +197,7 @@ const App: React.FC = () => {
     };
 
     const handleAddCase = async (newCaseData: { name: string }) => {
+        if (!currentUser) return;
         const newCaseDataForDb = {
             name: newCaseData.name,
             status: CaseStatus.Welcome,
@@ -125,6 +209,7 @@ const App: React.FC = () => {
             professionalIds: [],
             isPinned: false,
             orderIndex: Date.now(),
+            createdBy: currentUser.id,
         };
         try {
             const docRef = await addDoc(collection(db, "cases"), newCaseDataForDb);
@@ -198,10 +283,15 @@ const App: React.FC = () => {
     const handleSelectCaseById = (caseId: string, view: DashboardView = 'profile') => {
         const caseToSelect = cases.find(c => c.id === caseId);
         if (caseToSelect) {
-            setCurrentView('cases');
-            setInitialDashboardView(view);
-            setSelectedCase(caseToSelect);
-            setTasksPanelState({ mode: 'closed' });
+             // Security check: Only allow selection if admin or creator
+            if (currentUser?.role === 'admin' || caseToSelect.createdBy === currentUser?.id) {
+                setCurrentView('cases');
+                setInitialDashboardView(view);
+                setSelectedCase(caseToSelect);
+                setTasksPanelState({ mode: 'closed' });
+            } else {
+                console.warn(`Access denied: User ${currentUser?.id} tried to select case ${caseId}.`);
+            }
         }
     };
     const handleBackToCases = () => {
@@ -210,7 +300,8 @@ const App: React.FC = () => {
     };
 
     const handleAddTask = async (caseId: string | null, taskText: string) => {
-        const newTask: Task = { id: `task-${Date.now()}`, text: taskText, completed: false };
+        if (!currentUser) return;
+        const newTask: Task = { id: `task-${Date.now()}`, text: taskText, completed: false, createdBy: currentUser.id };
         if (caseId) {
             const updatedCase = cases.find(c => c.id === caseId);
             if (updatedCase) {
@@ -237,7 +328,7 @@ const App: React.FC = () => {
     };
 
     const handleSaveQuickNote = async (noteContent: string) => {
-        if (!quickNoteState.caseData) return;
+        if (!quickNoteState.caseData || !currentUser) return;
 
         const targetCase = cases.find(c => c.id === quickNoteState.caseData!.id);
         if (!targetCase) return;
@@ -246,7 +337,8 @@ const App: React.FC = () => {
             id: `note-${Date.now()}`,
             content: noteContent,
             color: 'yellow', // Default color for quick notes
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser.id,
         };
         
         const currentNotes = Array.isArray(targetCase.myNotes) ? targetCase.myNotes : [];
@@ -366,15 +458,18 @@ const App: React.FC = () => {
     };
 
     const handleSaveInterventionRecord = (caseId: string, record: InterventionRecord) => {
+         if (!currentUser) return;
+         const recordToSave = record.createdBy ? record : { ...record, createdBy: currentUser.id };
+
          const updatedCase = cases.find(c => c.id === caseId);
          if (updatedCase) {
-             const existingRecordIndex = updatedCase.interventionRecords.findIndex(r => r.id === record.id);
+             const existingRecordIndex = updatedCase.interventionRecords.findIndex(r => r.id === recordToSave.id);
              let newRecords: InterventionRecord[];
              if (existingRecordIndex > -1) {
                  newRecords = [...updatedCase.interventionRecords];
-                 newRecords[existingRecordIndex] = record;
+                 newRecords[existingRecordIndex] = recordToSave;
              } else {
-                 newRecords = [...updatedCase.interventionRecords, record];
+                 newRecords = [...updatedCase.interventionRecords, recordToSave];
              }
              handleUpdateCase({ ...updatedCase, interventionRecords: newRecords });
          }
@@ -389,12 +484,13 @@ const App: React.FC = () => {
     };
 
     const handleSaveIntervention = async (intervention: Omit<Intervention, 'id'> | Intervention) => {
+        if (!currentUser) return;
         const isEditing = 'id' in intervention;
         
         try {
             let finalIntervention: Intervention = isEditing
                 ? intervention as Intervention
-                : { ...intervention, id: `int-${Date.now()}`, ...(intervention as any) };
+                : { ...intervention, id: `int-${Date.now()}`, createdBy: currentUser.id, ...(intervention as any) };
             
             finalIntervention = Object.entries(finalIntervention).reduce((acc, [key, value]) => {
                 if (value !== undefined) {
@@ -486,6 +582,7 @@ const App: React.FC = () => {
     };
     
     const handleBatchAddInterventions = async (interventionsToAdd: (Omit<Intervention, 'id'>)[]) => {
+        if (!currentUser) return;
         const batch = writeBatch(db);
         const newGeneralInterventions: Intervention[] = [];
         const caseUpdates = new Map<string, Intervention[]>();
@@ -493,7 +590,7 @@ const App: React.FC = () => {
 
         interventionsToAdd.forEach((interventionData, index) => {
             const newId = `int-${Date.now()}-${index}`;
-            const finalIntervention: Intervention = { ...interventionData, id: newId } as Intervention;
+            const finalIntervention: Intervention = { ...interventionData, id: newId, createdBy: currentUser.id } as Intervention;
             
             if (finalIntervention.caseId && !cases.some(c => c.id === finalIntervention.caseId)) {
                 const foundId = caseNameIdMap.get(finalIntervention.caseId.toLowerCase());
@@ -758,6 +855,7 @@ const App: React.FC = () => {
     
 
     const renderContent = () => {
+        if (!currentUser) return null;
         if (isLoading) {
             return (
                 <div className="text-center py-20">
@@ -787,11 +885,20 @@ const App: React.FC = () => {
                         taskToConvert={taskToConvert}
                         onConversionHandled={() => setTaskToConvert(null)}
                         initialView={initialDashboardView}
+                        currentUser={currentUser}
                     />;
         }
 
         switch (currentView) {
             case 'admin':
+                 if (currentUser?.role !== 'admin') {
+                    return (
+                        <div className="text-center py-20">
+                            <h2 className="text-xl font-semibold text-slate-700">Acceso Denegado</h2>
+                            <p className="text-slate-500 mt-2">No tienes permisos para acceder a esta sección.</p>
+                        </div>
+                    );
+                }
                 return <AdminDashboard 
                             tools={adminTools} 
                             onSaveTool={handleSaveTool} 
@@ -810,17 +917,18 @@ const App: React.FC = () => {
                         />;
             case 'calendar':
                 return <CalendarView 
-                            cases={cases} 
+                            cases={visibleCases} 
                             generalInterventions={generalInterventions}
                             onSaveIntervention={handleSaveIntervention}
                             onDeleteIntervention={handleDeleteIntervention}
                             onSelectCaseById={handleSelectCaseById}
                             requestConfirmation={requestConfirmation}
+                            currentUser={currentUser}
                         />;
             case 'cases':
             default:
-                const activeCases = cases.filter(c => c.status !== CaseStatus.Closed);
-                const closedCases = cases.filter(c => c.status === CaseStatus.Closed);
+                const activeCases = visibleCases.filter(c => c.status !== CaseStatus.Closed);
+                const closedCases = visibleCases.filter(c => c.status === CaseStatus.Closed);
 
                 const searchFilter = (c: Case) => searchQuery
                     ? c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -853,7 +961,10 @@ const App: React.FC = () => {
                 const getNoResultsMessage = () => {
                     if (searchQuery) return { title: 'No se encontraron casos', message: 'Prueba a modificar los términos de tu búsqueda.' };
                     if (statusFilter) return { title: 'No hay casos con este estado', message: 'Prueba a limpiar el filtro o selecciona otro estado.' };
-                    return { title: 'No hay casos todavía', message: 'Crea un nuevo caso para empezar a trabajar.' };
+                    if (currentUser.role === 'admin') {
+                        return { title: 'No hay casos todavía', message: 'Crea un nuevo caso para empezar a trabajar.' };
+                    }
+                    return { title: 'No tienes casos asignados', message: 'Crea un nuevo caso para empezar o contacta a un administrador.' };
                 };
                 
                 const renderCaseList = (caseList: Case[]) => (
@@ -897,10 +1008,10 @@ const App: React.FC = () => {
                             />
                         </div>
                         
-                        {!statusFilter && !searchQuery && cases.length > 0 && (
+                        {!statusFilter && !searchQuery && visibleCases.length > 0 && (
                             <div className="mb-12">
                                 <CaseStatsDashboard 
-                                    cases={cases} 
+                                    cases={visibleCases} 
                                     professionals={professionals}
                                     generalInterventions={generalInterventions}
                                     generalTasks={generalTasks}
@@ -982,7 +1093,7 @@ const App: React.FC = () => {
                             <div className="text-center py-20 px-4 bg-white rounded-lg border-2 border-dashed border-slate-200">
                                 <h2 className="text-xl font-semibold text-slate-700">{getNoResultsMessage().title}</h2>
                                 <p className="text-slate-500 mt-2">{getNoResultsMessage().message}</p>
-                                {!statusFilter && !searchQuery && (
+                                {currentUser.role === 'admin' && (
                                     <button
                                         onClick={() => setIsNewCaseModalOpen(true)}
                                         className="mt-6 inline-flex items-center justify-center bg-teal-600 text-white w-14 h-14 rounded-full hover:bg-teal-700 font-semibold shadow-lg transition-transform hover:scale-105"
@@ -998,6 +1109,11 @@ const App: React.FC = () => {
         }
     };
 
+    if (!currentUser) {
+        const systemUsers = professionals.filter(p => p.isSystemUser);
+        return <Login professionals={systemUsers} onLogin={handleLogin} />;
+    }
+
     return (
         <div className="bg-slate-50 min-h-screen">
             <Header 
@@ -1007,6 +1123,8 @@ const App: React.FC = () => {
                 onSetView={handleSetView}
                 isCaseView={!!selectedCase}
                 isSidebarCollapsed={isSidebarCollapsed}
+                currentUser={currentUser}
+                onLogout={handleLogout}
             />
             <main className="pt-[calc(4rem+env(safe-area-inset-top))]">
                 {renderContent()}
@@ -1020,12 +1138,12 @@ const App: React.FC = () => {
                 isOpen={isNewTaskModalOpen}
                 onClose={() => setIsNewTaskModalOpen(false)}
                 onAddTask={handleAddTask}
-                cases={cases}
+                cases={visibleCases}
             />
             <TasksSidePanel
                 mode={tasksPanelState.mode}
                 caseData={tasksPanelState.caseData}
-                allCases={cases}
+                allCases={visibleCases}
                 generalTasks={generalTasks}
                 onClose={() => setTasksPanelState({ mode: 'closed' })}
                 onAddTask={handleAddTask}
@@ -1035,6 +1153,7 @@ const App: React.FC = () => {
                 onDeleteGeneralTask={handleDeleteGeneralTask}
                 onTaskToEntry={setTaskToConvert}
                 onSelectCaseById={handleSelectCaseById}
+                currentUser={currentUser}
             />
              <ConfirmationModal
                 isOpen={!!confirmationState?.isOpen}

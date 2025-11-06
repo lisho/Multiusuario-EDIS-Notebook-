@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Case, MyNote } from '../types';
+import { Case, MyNote, User } from '../types';
 import NoteEditorModal from './NoteEditorModal';
 import { IoJournalOutline, IoAddOutline, IoPencilOutline, IoTrashOutline } from 'react-icons/io5';
 
@@ -7,6 +7,7 @@ interface MyNotesViewProps {
   caseData: Case;
   onUpdateCase: (updatedCase: Case) => void;
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
+  currentUser: User;
 }
 
 const colorClasses = {
@@ -32,7 +33,7 @@ const PostItCard: React.FC<{ note: MyNote; onEdit: () => void; onDelete: () => v
 };
 
 
-const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, requestConfirmation }) => {
+const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, requestConfirmation, currentUser }) => {
     const [notes, setNotes] = useState<MyNote[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingNote, setEditingNote] = useState<MyNote | null>(null);
@@ -42,8 +43,7 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
     const [isDragging, setIsDragging] = useState(false);
 
     useEffect(() => {
-        // Perform a one-time migration if myNotes is a string
-        const initialNotes: MyNote[] = Array.isArray(caseData.myNotes) ? caseData.myNotes :
+        const allNotes: MyNote[] = Array.isArray(caseData.myNotes) ? caseData.myNotes :
             (typeof caseData.myNotes === 'string' && (caseData.myNotes as string).trim() !== '') ?
             [{
                 id: `note-${Date.now()}`,
@@ -52,9 +52,10 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
                 createdAt: new Date().toISOString()
             }] : [];
         
-        // With drag-and-drop, we respect the order from the database instead of sorting by date.
-        setNotes(initialNotes);
-    }, [caseData.myNotes, caseData.id]);
+        const userNotes = allNotes.filter(note => note.createdBy === currentUser.id);
+        
+        setNotes(userNotes);
+    }, [caseData.myNotes, caseData.id, currentUser]);
 
     const handleOpenModal = (note: MyNote | null) => {
         setEditingNote(note);
@@ -67,18 +68,26 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
     };
 
     const handleSaveNote = async (noteData: Pick<MyNote, 'content' | 'color'> & { id?: string }) => {
-        let updatedNotes: MyNote[];
+        const allNotesFromCase = Array.isArray(caseData.myNotes) ? [...caseData.myNotes] : [];
+        const otherUserNotes = allNotesFromCase.filter(n => n.createdBy !== currentUser.id);
+        const currentUserNotes = allNotesFromCase.filter(n => n.createdBy === currentUser.id);
+
+        let updatedCurrentUserNotes: MyNote[];
+
         if (noteData.id) { // Editing existing note
-            updatedNotes = notes.map(n => n.id === noteData.id ? { ...n, content: noteData.content, color: noteData.color } : n);
+            updatedCurrentUserNotes = currentUserNotes.map(n => n.id === noteData.id ? { ...n, content: noteData.content, color: noteData.color } : n);
         } else { // Adding new note
             const newNote: MyNote = {
                 id: `note-${Date.now()}`,
                 content: noteData.content,
                 color: noteData.color,
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                createdBy: currentUser.id,
             };
-            updatedNotes = [newNote, ...notes];
+            updatedCurrentUserNotes = [newNote, ...currentUserNotes];
         }
+        
+        const updatedNotes = [...otherUserNotes, ...updatedCurrentUserNotes];
         await onUpdateCase({ ...caseData, myNotes: updatedNotes });
         handleCloseModal();
     };
@@ -88,7 +97,8 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
             'Eliminar Nota',
             '¿Estás seguro de que quieres eliminar esta nota? Esta acción no se puede deshacer.',
             async () => {
-                const updatedNotes = notes.filter(n => n.id !== noteId);
+                const allNotesFromCase = Array.isArray(caseData.myNotes) ? caseData.myNotes : [];
+                const updatedNotes = allNotesFromCase.filter(n => n.id !== noteId);
                 await onUpdateCase({ ...caseData, myNotes: updatedNotes });
             }
         );
@@ -98,7 +108,6 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
     const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
         dragNoteRef.current = index;
         e.dataTransfer.effectAllowed = 'move';
-        // Use a timeout to allow the browser to render the drag image before we change the style
         setTimeout(() => setIsDragging(true), 0);
     };
 
@@ -114,14 +123,16 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
             return;
         }
 
-        const reorderedNotes = [...notes];
-        const draggedItem = reorderedNotes.splice(dragNoteRef.current, 1)[0];
-        reorderedNotes.splice(dragOverNoteRef.current, 0, draggedItem);
+        const currentUserNotes = [...notes]; // `notes` state is already filtered for the current user
+        const draggedItem = currentUserNotes.splice(dragNoteRef.current, 1)[0];
+        currentUserNotes.splice(dragOverNoteRef.current, 0, draggedItem);
         
-        // Update local state immediately for a smooth user experience
-        setNotes(reorderedNotes);
-        // Persist the new order to the database
-        onUpdateCase({ ...caseData, myNotes: reorderedNotes });
+        const allNotesFromCase = Array.isArray(caseData.myNotes) ? caseData.myNotes : [];
+        const otherUserNotes = allNotesFromCase.filter(n => n.createdBy !== currentUser.id);
+        const finalNotes = [...otherUserNotes, ...currentUserNotes];
+        
+        setNotes(currentUserNotes);
+        onUpdateCase({ ...caseData, myNotes: finalNotes });
 
         dragNoteRef.current = null;
         dragOverNoteRef.current = null;
@@ -129,7 +140,6 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
     };
 
     const handleDragEnd = () => {
-        // Cleanup in case drop doesn't fire (e.g., dropping outside a valid target)
         setIsDragging(false);
         dragNoteRef.current = null;
         dragOverNoteRef.current = null;

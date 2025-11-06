@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Case, Task, DashboardView } from '../types';
+import { Case, Task, DashboardView, User } from '../types';
 import { IoCheckboxOutline, IoCloseOutline, IoTrashOutline, IoAddOutline, IoBookOutline } from 'react-icons/io5';
 
 interface TasksSidePanelProps {
@@ -15,9 +15,10 @@ interface TasksSidePanelProps {
     onDeleteGeneralTask: (taskId: string) => void;
     onTaskToEntry: (task: Task) => void;
     onSelectCaseById: (caseId: string, view: DashboardView) => void;
+    currentUser: User | null;
 }
 
-const TasksSidePanel: React.FC<TasksSidePanelProps> = ({ mode, caseData, allCases, generalTasks, onClose, onAddTask, onToggleTask, onDeleteTask, onToggleGeneralTask, onDeleteGeneralTask, onTaskToEntry, onSelectCaseById }) => {
+const TasksSidePanel: React.FC<TasksSidePanelProps> = ({ mode, caseData, allCases, generalTasks, onClose, onAddTask, onToggleTask, onDeleteTask, onToggleGeneralTask, onDeleteGeneralTask, onTaskToEntry, onSelectCaseById, currentUser }) => {
     const [isVisible, setIsVisible] = useState(false);
     const [newTaskText, setNewTaskText] = useState('');
     const [error, setError] = useState<string | null>(null);
@@ -56,21 +57,21 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = ({ mode, caseData, allCase
     };
     
     const tasksByCase = useMemo(() => {
-        if (mode !== 'all' || !allCases) return [];
+        if (mode !== 'all' || !allCases || !currentUser) return [];
         return allCases
             .map(c => ({
                 caseId: c.id,
                 caseName: c.name,
                 caseNickname: c.nickname,
-                tasks: c.tasks.filter(t => !t.completed)
+                tasks: c.tasks.filter(t => !t.completed && t.createdBy === currentUser.id)
             }))
             .filter(group => group.tasks.length > 0);
-    }, [allCases, mode]);
+    }, [allCases, mode, currentUser]);
     
     const pendingGeneralTasks = useMemo(() => {
-        if (mode !== 'all' || !generalTasks) return [];
-        return generalTasks.filter(t => !t.completed);
-    }, [generalTasks, mode]);
+        if (mode !== 'all' || !generalTasks || !currentUser) return [];
+        return generalTasks.filter(t => !t.completed && t.createdBy === currentUser.id);
+    }, [generalTasks, mode, currentUser]);
 
 
     const TaskItem: React.FC<{task: Task, caseId: string | null}> = ({ task, caseId }) => {
@@ -115,9 +116,10 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = ({ mode, caseData, allCase
     };
 
     const renderSingleCaseView = () => {
-        if (!caseData) return null;
-        const pendingTasks = caseData.tasks.filter(task => !task.completed);
-        const completedTasks = caseData.tasks.filter(task => task.completed);
+        if (!caseData || !currentUser) return null;
+        const userTasks = caseData.tasks.filter(t => t.createdBy === currentUser.id);
+        const pendingTasks = userTasks.filter(task => !task.completed);
+        const completedTasks = userTasks.filter(task => task.completed);
         
         return (
             <>
@@ -205,7 +207,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = ({ mode, caseData, allCase
                         <IoCheckboxOutline className="text-2xl text-teal-600" />
                         <div>
                             <h2 className="text-xl font-bold text-slate-800">
-                                {mode === 'single' ? 'Tareas' : 'Todas las Tareas Pendientes'}
+                                {mode === 'single' ? 'Mis Tareas' : 'Todas Mis Tareas Pendientes'}
                             </h2>
                             {mode === 'single' && caseData && <p className="text-base font-medium text-slate-600">
                                 {caseData.name}

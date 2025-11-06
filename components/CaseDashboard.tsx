@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Intervention, Case, CaseStatus, Task, InterventionType, AdminTool, InterventionMoment, InterventionRecord, InterventionStatus, Professional, DashboardView } from '../types';
+import { Intervention, Case, CaseStatus, Task, InterventionType, AdminTool, InterventionMoment, InterventionRecord, InterventionStatus, Professional, DashboardView, User } from '../types';
 import NewEventModal from './NewEventModal';
 import AiInsightModal from './AiInsightModal';
 import ProfileView from './ProfileView';
@@ -67,10 +67,11 @@ interface CaseDashboardProps {
     taskToConvert?: Task | null;
     onConversionHandled?: () => void;
     initialView: DashboardView;
+    currentUser: User;
 }
 
 const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
-    const { caseData, onBack, onUpdateCase, onDeleteCase, adminTools, onSaveInterventionRecord, onDeleteInterventionRecord, onOpenTasks, isSidebarCollapsed, onToggleSidebar, requestConfirmation, taskToConvert, onConversionHandled, initialView } = props;
+    const { caseData, onBack, onUpdateCase, onDeleteCase, adminTools, onSaveInterventionRecord, onDeleteInterventionRecord, onOpenTasks, isSidebarCollapsed, onToggleSidebar, requestConfirmation, taskToConvert, onConversionHandled, initialView, currentUser } = props;
     const [activeView, setActiveView] = useState<DashboardView>(initialView);
     const [diagnosisTab, setDiagnosisTab] = useState<DiagnosisTab>('relational');
     
@@ -159,6 +160,7 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                 moment: tool.moment,
                 date: new Date().toISOString(),
                 answers,
+                createdBy: currentUser.id,
             };
             onSaveInterventionRecord(caseData.id, newRecord);
         }
@@ -276,7 +278,7 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                         />;
             case 'tasks':
                 return <TasksView 
-                    tasks={caseData.tasks}
+                    tasks={caseData.tasks.filter(t => t.createdBy === currentUser.id)}
                     onAddTask={(taskText) => props.onAddTask(caseData.id, taskText)}
                     onToggleTask={(taskId) => props.onToggleTask(caseData.id, taskId)}
                     onDeleteTask={(taskId) => props.onDeleteTask(caseData.id, taskId)}
@@ -290,7 +292,7 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                             requestConfirmation={requestConfirmation}
                         />;
             case 'myNotes':
-                return <MyNotesView caseData={caseData} onUpdateCase={onUpdateCase} requestConfirmation={requestConfirmation} />;
+                return <MyNotesView caseData={caseData} onUpdateCase={onUpdateCase} requestConfirmation={requestConfirmation} currentUser={currentUser} />;
             case 'reports':
                  return (
                     <div className="p-8 bg-white rounded-lg shadow">

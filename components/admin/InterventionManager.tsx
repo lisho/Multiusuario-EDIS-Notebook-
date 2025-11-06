@@ -49,7 +49,8 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
     
     const allPresentInterventionTypes = useMemo(() => {
         const types = new Set(allInterventions.map(i => i.interventionType as string));
-        return Array.from(types).sort((a, b) => a.localeCompare(b));
+        // FIX: Explicitly type sort parameters to resolve TS inference error.
+        return Array.from(types).sort((a: string, b: string) => a.localeCompare(b));
     }, [allInterventions]);
     
     const inconsistentInterventionsGrouped = useMemo(() => {
@@ -168,8 +169,9 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
 
     const { unassignedSelected, assignedSelected, canBeRegistered, canBeUnregistered } = useMemo(() => {
         const selected = allInterventions.filter(i => selectedInterventions.has(i.id));
-        const unassignedSelected = selected.filter(i => !i.caseId);
-        const assignedSelected = selected.filter(i => !!i.caseId);
+        // FIX: The `unknown` type error for `unassignedSelected.length` is resolved by explicitly typing these arrays.
+        const unassignedSelected: Intervention[] = selected.filter(i => !i.caseId);
+        const assignedSelected: Intervention[] = selected.filter(i => !!i.caseId);
         const canBeRegistered = assignedSelected.some(i => !i.isRegistered);
         const canBeUnregistered = assignedSelected.some(i => i.isRegistered);
         return { unassignedSelected, assignedSelected, canBeRegistered, canBeUnregistered };

@@ -36,11 +36,11 @@ const momentConfig = {
 const ProfessionalSection: React.FC<{
     title: string;
     professionals: Professional[];
-    role: ProfessionalRole;
+    isUserSection?: boolean;
     onAdd: () => void;
     onEdit: (prof: Professional) => void;
     onDelete: (id: string) => void;
-}> = ({ title, professionals, onAdd, onEdit, onDelete }) => (
+}> = ({ title, professionals, isUserSection = false, onAdd, onEdit, onDelete }) => (
     <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 space-y-4">
         <div className="flex justify-between items-center">
             <h2 className="text-xl font-bold text-slate-800">{title}</h2>
@@ -59,9 +59,17 @@ const ProfessionalSection: React.FC<{
                         <div className="flex items-center gap-3">
                             <IoPeopleOutline className="text-slate-500 text-2xl"/>
                             <div>
-                                <h3 className="font-semibold text-slate-700">{prof.name}</h3>
+                                <h3 className="font-semibold text-slate-700">
+                                    {prof.name}
+                                    {isUserSection && prof.systemRole === 'admin' && (
+                                        <span className="ml-2 text-xs font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Admin</span>
+                                    )}
+                                </h3>
                                 {prof.role === ProfessionalRole.SocialWorker && prof.ceas && (
                                     <p className="text-xs text-slate-500">{prof.ceas}</p>
+                                )}
+                                 {isUserSection && !prof.isSystemUser && (
+                                    <p className="text-xs font-semibold text-red-600">Acceso deshabilitado</p>
                                 )}
                             </div>
                         </div>
@@ -81,7 +89,7 @@ const ProfessionalSection: React.FC<{
 // FIX: Changed to a named export to resolve the "Module has no default export" error.
 export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const { tools, onSaveTool, onDeleteTool, professionals, onSaveProfessional, onDeleteProfessional, cases, onBatchAddInterventions, generalInterventions, onSaveIntervention, onBatchUpdateInterventions, onDeleteIntervention, onBatchDeleteInterventions, requestConfirmation } = props;
-  const [activeTab, setActiveTab] = useState<AdminTab>('interventions');
+  const [activeTab, setActiveTab] = useState<AdminTab>('professionals');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingTool, setEditingTool] = useState<AdminTool | null>(null);
   const [defaultMoment, setDefaultMoment] = useState<InterventionMoment>(InterventionMoment.Welcome);
@@ -187,7 +195,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             <div className="border-b border-slate-200">
                 <nav className="-mb-px flex gap-6">
                     <TabButton tab="tools" label="Caja de Herramientas" icon={IoConstructOutline} />
-                    <TabButton tab="professionals" label="Gestor de Técnicos" icon={IoBriefcaseOutline} />
+                    <TabButton tab="professionals" label="Gestor de Profesionales" icon={IoBriefcaseOutline} />
                     <TabButton tab="interventions" label="Intervenciones" icon={IoCalendarOutline} />
                 </nav>
             </div>
@@ -242,9 +250,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
 
                 {activeTab === 'professionals' && (
                     <div className="space-y-8">
+                        <ProfessionalSection
+                            title="Usuarios del Sistema (Técnicos EDIS)"
+                            professionals={edisTechnicians}
+                            isUserSection={true}
+                            onAdd={() => handleOpenProfEditor(null, ProfessionalRole.EdisTechnician)}
+                            onEdit={(prof) => handleOpenProfEditor(prof, ProfessionalRole.EdisTechnician)}
+                            onDelete={onDeleteProfessional}
+                        />
                         <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 space-y-4">
                             <div className="flex justify-between items-center">
-                                <h2 className="text-xl font-bold text-slate-800">Trabajadores/as Sociales</h2>
+                                <h2 className="text-xl font-bold text-slate-800">Trabajadores/as Sociales (Contactos)</h2>
                                 <button
                                     onClick={() => handleOpenProfEditor(null, ProfessionalRole.SocialWorker)}
                                     className="bg-teal-50 text-teal-700 w-10 h-10 rounded-lg hover:bg-teal-100 font-semibold flex items-center justify-center gap-2 transition-colors border border-teal-200"
@@ -293,15 +309,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                                 )}
                             </div>
                         </div>
-
-                        <ProfessionalSection
-                            title="Técnicos de EDIS"
-                            professionals={edisTechnicians}
-                            role={ProfessionalRole.EdisTechnician}
-                            onAdd={() => handleOpenProfEditor(null, ProfessionalRole.EdisTechnician)}
-                            onEdit={(prof) => handleOpenProfEditor(prof, ProfessionalRole.EdisTechnician)}
-                            onDelete={onDeleteProfessional}
-                        />
                     </div>
                 )}
 
