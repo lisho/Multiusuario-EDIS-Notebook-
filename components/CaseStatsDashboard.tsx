@@ -31,6 +31,7 @@ import {
     IoCheckmarkCircleOutline,
     IoWarningOutline
 } from 'react-icons/io5';
+import { PieChart as RechartsPieChart, Pie, Cell, Tooltip, ResponsiveContainer, Label } from 'recharts';
 
 interface CaseStatsDashboardProps {
   cases: Case[];
@@ -137,49 +138,6 @@ const StatCard: React.FC<{
         </div>
     </div>
 );
-
-const PieChart: React.FC<{ data: { status: CaseStatus, count: number, color: string }[], totalValue: number }> = ({ data, totalValue }) => {
-    const radius = 52;
-    const strokeWidth = 20;
-    const innerRadius = radius - strokeWidth / 2;
-    const circumference = 2 * Math.PI * innerRadius;
-    let accumulatedPercent = 0;
-
-    return (
-        <div className="relative w-40 h-40">
-            <svg viewBox="0 0 120 120" className="w-full h-full transform -rotate-90">
-                {data.map(({ count, color, status }) => {
-                    const percent = (count / totalValue) * 100;
-                    const offset = circumference - (circumference * percent) / 100;
-                    const rotation = (accumulatedPercent / 100) * 360;
-                    accumulatedPercent += percent;
-
-                    return (
-                        <circle
-                            key={status}
-                            cx="60"
-                            cy="60"
-                            r={innerRadius}
-                            fill="transparent"
-                            stroke={color}
-                            strokeWidth={strokeWidth}
-                            strokeDasharray={`${circumference} ${circumference}`}
-                            style={{ strokeDashoffset: offset }}
-                            transform={`rotate(${rotation} 60 60)`}
-                        >
-                             <title>{`${status}: ${count} (${percent.toFixed(1)}%)`}</title>
-                        </circle>
-                    );
-                })}
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-3xl font-bold text-slate-800">{totalValue}</span>
-                <span className="text-sm text-slate-500">Casos</span>
-            </div>
-        </div>
-    );
-};
-
 
 const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
     const { cases, professionals, generalInterventions, generalTasks, onSelectCaseById, onSetStatusFilter, onOpenAllTasks, onSaveIntervention, onDeleteIntervention, requestConfirmation, currentUser } = props;
@@ -366,8 +324,28 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                             <h3 className="font-semibold text-slate-800">Resumen de Casos Activos</h3>
                         </div>
                         <div className="flex flex-col sm:flex-row items-center gap-6">
-                            <div className="flex-shrink-0">
-                                <PieChart data={stats.casesByStatus} totalValue={stats.totalCases} />
+                            <div className="flex-shrink-0 w-40 h-40">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <RechartsPieChart>
+                                        <Pie
+                                            data={stats.casesByStatus}
+                                            dataKey="count"
+                                            nameKey="status"
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={50}
+                                            outerRadius={70}
+                                            paddingAngle={2}
+                                        >
+                                            {stats.casesByStatus.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={entry.color} />
+                                            ))}
+                                            <Label value={stats.totalCases} position="center" className="text-3xl font-bold text-slate-800" dy={-5} />
+                                            <Label value="Casos" position="center" className="text-sm text-slate-500" dy={15} />
+                                        </Pie>
+                                        <Tooltip formatter={(value: number, name: string, props) => [`${value} (${((value / stats.totalCases) * 100).toFixed(1)}%)`, props.payload.status]} />
+                                    </RechartsPieChart>
+                                </ResponsiveContainer>
                             </div>
                             <div className="w-full flex-grow">
                                 <ul className="space-y-1 text-sm">
