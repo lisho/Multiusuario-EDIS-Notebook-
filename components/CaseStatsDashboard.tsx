@@ -214,6 +214,16 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         const pendingGeneralTasks = generalTasks.filter(t => !t.completed).length;
         const pendingTasksCount = pendingCaseTasks + pendingGeneralTasks;
         
+        const statusOrder: CaseStatus[] = [
+            CaseStatus.PendingReferral,
+            CaseStatus.Welcome,
+            CaseStatus.CoDiagnosis,
+            CaseStatus.SharedPlanning,
+            CaseStatus.Accompaniment,
+            CaseStatus.FollowUp,
+            CaseStatus.Closed,
+        ];
+
         const casesByStatus = Object.values(CaseStatus)
             .map(status => ({
                 status,
@@ -222,7 +232,7 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                 className: getStatusColorClass(status),
             }))
             .filter(item => item.count > 0)
-            .sort((a, b) => b.count - a.count);
+            .sort((a, b) => statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status));
 
         const recentlyUpdated = cases.slice(0, 3);
 
