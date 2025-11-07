@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Header from './components/Header';
 import CaseDashboard from './components/CaseDashboard';
 import CaseCard from './components/CaseCard';
@@ -18,6 +18,44 @@ import { db } from './services/firebase';
 import { collection, query, getDocs, addDoc, doc, updateDoc, deleteDoc, writeBatch, setDoc } from 'firebase/firestore';
 import { IoAddOutline, IoCloseCircleOutline, IoSearchOutline, IoChevronDownOutline } from 'react-icons/io5';
 import { BsPinAngleFill } from 'react-icons/bs';
+
+const AnimatedSection: React.FC<{ children: React.ReactNode; delay: number }> = ({ children, delay }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const [isVisible, setIsVisible] = useState(false);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    setIsVisible(true);
+                    observer.unobserve(entry.target);
+                }
+            },
+            { threshold: 0.1 }
+        );
+
+        const currentRef = ref.current;
+        if (currentRef) {
+            observer.observe(currentRef);
+        }
+
+        return () => {
+            if (currentRef) {
+                observer.unobserve(currentRef);
+            }
+        };
+    }, []);
+
+    return (
+        <div
+            ref={ref}
+            style={{ transitionDelay: `${delay}ms` }}
+            className={`h-full transition-all duration-500 ease-out ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'}`}
+        >
+            {children}
+        </div>
+    );
+};
 
 const caseSorter = (a: Case, b: Case): number => {
     const aPinned = a.isPinned ?? false;
@@ -1045,26 +1083,28 @@ const App: React.FC = () => {
                 
                 const renderCaseList = (caseList: Case[]) => (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {caseList.map(caseData => (
-                             <div 
-                                key={caseData.id}
-                                onDragOver={e => e.preventDefault()}
-                                onDrop={() => handleDrop(caseData)}
-                            >
-                                <CaseCard 
-                                    caseData={caseData}
-                                    professionals={professionals}
-                                    onSelect={handleSelectCase} 
-                                    onOpenTasks={(caseData) => setTasksPanelState({ mode: 'single', caseData })}
-                                    onSetStatusFilter={setStatusFilter}
-                                    onTogglePin={() => handleTogglePin(caseData)}
-                                    onAddQuickNote={handleOpenQuickNoteModal}
-                                    draggable={true}
-                                    onDragStart={() => setDraggedItem(caseData)}
-                                    onDragEnd={() => setDraggedItem(null)}
-                                    isDragging={draggedItem?.id === caseData.id}
-                                />
-                            </div>
+                        {caseList.map((caseData, index) => (
+                            <AnimatedSection key={caseData.id} delay={index * 50}>
+                                <div 
+                                    onDragOver={e => e.preventDefault()}
+                                    onDrop={() => handleDrop(caseData)}
+                                    className="h-full"
+                                >
+                                    <CaseCard 
+                                        caseData={caseData}
+                                        professionals={professionals}
+                                        onSelect={handleSelectCase} 
+                                        onOpenTasks={(caseData) => setTasksPanelState({ mode: 'single', caseData })}
+                                        onSetStatusFilter={setStatusFilter}
+                                        onTogglePin={() => handleTogglePin(caseData)}
+                                        onAddQuickNote={handleOpenQuickNoteModal}
+                                        draggable={true}
+                                        onDragStart={() => setDraggedItem(caseData)}
+                                        onDragEnd={() => setDraggedItem(null)}
+                                        isDragging={draggedItem?.id === caseData.id}
+                                    />
+                                </div>
+                            </AnimatedSection>
                         ))}
                     </div>
                 );
@@ -1148,18 +1188,19 @@ const App: React.FC = () => {
                                         </button>
                                         {(isClosedCasesVisible || isDisplayingOnlyClosed) && (
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                                {displayedClosedCases.map(caseData => (
-                                                    <CaseCard 
-                                                        key={caseData.id} 
-                                                        caseData={caseData}
-                                                        professionals={professionals}
-                                                        onSelect={handleSelectCase} 
-                                                        onOpenTasks={(caseData) => setTasksPanelState({ mode: 'single', caseData })}
-                                                        onSetStatusFilter={setStatusFilter}
-                                                        onTogglePin={() => handleTogglePin(caseData)}
-                                                        onAddQuickNote={handleOpenQuickNoteModal}
-                                                        draggable={false}
-                                                    />
+                                                {displayedClosedCases.map((caseData, index) => (
+                                                    <AnimatedSection key={caseData.id} delay={index * 50}>
+                                                        <CaseCard 
+                                                            caseData={caseData}
+                                                            professionals={professionals}
+                                                            onSelect={handleSelectCase} 
+                                                            onOpenTasks={(caseData) => setTasksPanelState({ mode: 'single', caseData })}
+                                                            onSetStatusFilter={setStatusFilter}
+                                                            onTogglePin={() => handleTogglePin(caseData)}
+                                                            onAddQuickNote={handleOpenQuickNoteModal}
+                                                            draggable={false}
+                                                        />
+                                                    </AnimatedSection>
                                                 ))}
                                             </div>
                                         )}
