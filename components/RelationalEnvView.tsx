@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Case, FamilyMember } from '../types';
+import { Case, FamilyMember, DashboardView } from '../types';
 import FamilyMemberModal from './FamilyMemberModal';
 import ContactCard from './ContactCard';
 import { IoAddOutline } from 'react-icons/io5';
@@ -8,19 +8,44 @@ interface RelationalEnvViewProps {
   caseData: Case;
   onUpdateCase: (updatedCase: Case) => void;
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
+  cases: Case[];
+  onSelectCaseById: (caseId: string, view: DashboardView) => void;
 }
 
-const RelationalEnvView: React.FC<RelationalEnvViewProps> = ({ caseData, onUpdateCase, requestConfirmation }) => {
+const RelationalEnvView: React.FC<RelationalEnvViewProps> = ({ caseData, onUpdateCase, requestConfirmation, cases, onSelectCaseById }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<FamilyMember | null>(null);
 
-  const contacts = caseData.familyGrid || [];
+  const hydratedContacts = useMemo(() => {
+    const caseMap = new Map(cases.map(c => [c.id, c]));
+    const originalContacts = caseData.familyGrid || [];
+
+    return originalContacts.map(contact => {
+      if (contact.caseIdLink) {
+        const linkedCase = caseMap.get(contact.caseIdLink);
+        if (linkedCase) {
+          // Return a new object with updated data from the linked case,
+          // while preserving the specific relationship data from the original contact.
+          return {
+            ...contact, // Keeps id, relationship, birthDate, notes, isFamily, isConflictual, caseIdLink
+            name: linkedCase.name, // Override with fresh data
+            phone: linkedCase.phone,
+            email: linkedCase.email,
+            address: linkedCase.address,
+          };
+        }
+      }
+      // If no link or linked case not found, return the original contact as is.
+      return contact;
+    });
+  }, [caseData.familyGrid, cases]);
+
 
   const categorizedContacts = useMemo(() => {
     const cohabits = (member: FamilyMember) => member.address === caseData.address && !!caseData.address;
 
-    const conflictual = contacts.filter(m => m.isConflictual);
-    const nonConflictual = contacts.filter(m => !m.isConflictual);
+    const conflictual = hydratedContacts.filter(m => m.isConflictual);
+    const nonConflictual = hydratedContacts.filter(m => !m.isConflictual);
 
     return {
       familyUnit: nonConflictual.filter(m => m.isFamily && cohabits(m)),
@@ -29,7 +54,7 @@ const RelationalEnvView: React.FC<RelationalEnvViewProps> = ({ caseData, onUpdat
       otherResources: nonConflictual.filter(m => !m.isFamily && !cohabits(m)),
       conflictualRelationships: conflictual,
     };
-  }, [contacts, caseData.address]);
+  }, [hydratedContacts, caseData.address]);
 
   const handleOpenAddModal = () => {
     setEditingMember(null);
@@ -37,7 +62,10 @@ const RelationalEnvView: React.FC<RelationalEnvViewProps> = ({ caseData, onUpdat
   };
 
   const handleOpenEditModal = (member: FamilyMember) => {
-    setEditingMember(member);
+    // Find the original, un-hydrated member data to pass to the modal
+    // This ensures that fields like 'notes' or 'relationship' are the stored values.
+    const originalMember = (caseData.familyGrid || []).find(m => m.id === member.id);
+    setEditingMember(originalMember || null);
     setIsModalOpen(true);
   };
 
@@ -46,16 +74,18 @@ const RelationalEnvView: React.FC<RelationalEnvViewProps> = ({ caseData, onUpdat
       'Eliminar Contacto',
       '¿Estás seguro de que quieres eliminar este contacto? Esta acción no se puede deshacer.',
       () => {
-        const updatedGrid = contacts.filter(member => member.id !== id);
+        const updatedGrid = (caseData.familyGrid || []).filter(member => member.id !== id);
         onUpdateCase({ ...caseData, familyGrid: updatedGrid });
       }
     );
   };
 
   const handleSaveMember = (memberData: Omit<FamilyMember, 'id'> & { id?: string }) => {
+    const originalContacts = caseData.familyGrid || [];
     let updatedGrid: FamilyMember[];
+
     if (memberData.id) { // Editing
-      updatedGrid = contacts.map(m => (m.id === memberData.id ? { ...m, ...memberData } as FamilyMember : m));
+      updatedGrid = originalContacts.map(m => (m.id === memberData.id ? { ...m, ...memberData } as FamilyMember : m));
     } else { // Adding
       const newMember: FamilyMember = {
         id: `fm-${Date.now()}`,
@@ -68,8 +98,9 @@ const RelationalEnvView: React.FC<RelationalEnvViewProps> = ({ caseData, onUpdat
         notes: memberData.notes,
         isFamily: memberData.isFamily,
         isConflictual: memberData.isConflictual,
+        caseIdLink: memberData.caseIdLink,
       };
-      updatedGrid = [...contacts, newMember];
+      updatedGrid = [...originalContacts, newMember];
     }
     onUpdateCase({ ...caseData, familyGrid: updatedGrid });
     setIsModalOpen(false);
@@ -89,6 +120,7 @@ const RelationalEnvView: React.FC<RelationalEnvViewProps> = ({ caseData, onUpdat
               member={member}
               onEdit={() => handleOpenEditModal(member)}
               onDelete={() => handleDeleteMember(member.id)}
+              onSelectCaseById={(caseId) => onSelectCaseById(caseId, 'profile')}
             />
           ))}
         </div>
@@ -113,7 +145,7 @@ const RelationalEnvView: React.FC<RelationalEnvViewProps> = ({ caseData, onUpdat
             </button>
         </div>
 
-        {contacts.length > 0 ? (
+        {hydratedContacts.length > 0 ? (
             <div className="space-y-6">
                 {renderSection('Unidad Familiar', categorizedContacts.familyUnit, 'Familiares que residen en el mismo domicilio.')}
                 {renderSection('Unidad de Convivencia', categorizedContacts.cohabitationUnit, 'Personas no familiares que residen en el mismo domicilio.')}
@@ -135,6 +167,8 @@ const RelationalEnvView: React.FC<RelationalEnvViewProps> = ({ caseData, onUpdat
         onSave={handleSaveMember}
         initialData={editingMember}
         caseAddress={caseData.address || ''}
+        cases={cases}
+        currentCaseId={caseData.id}
       />
     </>
   );

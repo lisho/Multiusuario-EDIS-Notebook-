@@ -71,10 +71,12 @@ interface CaseDashboardProps {
     onConversionHandled?: () => void;
     initialView: DashboardView;
     currentUser: User;
+    cases: Case[];
+    onSelectCaseById: (caseId: string, view: DashboardView) => void;
 }
 
 const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
-    const { caseData, onBack, onUpdateCase, onUpdateTask, onDeleteCase, adminTools, onSaveInterventionRecord, onDeleteInterventionRecord, onOpenTasks, isSidebarCollapsed, onToggleSidebar, requestConfirmation, taskToConvert, onConversionHandled, initialView, currentUser } = props;
+    const { caseData, onBack, onUpdateCase, onUpdateTask, onDeleteCase, adminTools, onSaveInterventionRecord, onDeleteInterventionRecord, onOpenTasks, isSidebarCollapsed, onToggleSidebar, requestConfirmation, taskToConvert, onConversionHandled, initialView, currentUser, cases, onSelectCaseById } = props;
     const [activeView, setActiveView] = useState<DashboardView>(initialView);
     const [diagnosisTab, setDiagnosisTab] = useState<DiagnosisTab>('relational');
     
@@ -260,7 +262,13 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                                 requestConfirmation={requestConfirmation}
                             />
                         ) : (
-                            <RelationalEnvView caseData={caseData} onUpdateCase={onUpdateCase} requestConfirmation={requestConfirmation} />
+                            <RelationalEnvView
+                                caseData={caseData}
+                                onUpdateCase={onUpdateCase}
+                                requestConfirmation={requestConfirmation}
+                                cases={cases}
+                                onSelectCaseById={onSelectCaseById}
+                            />
                         )}
                         </div>
                     </div>

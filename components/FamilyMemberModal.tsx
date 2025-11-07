@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { FamilyMember } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Case, FamilyMember } from '../types';
 import { IoPeopleOutline, IoCloseOutline, IoSaveOutline } from 'react-icons/io5';
 
 interface FamilyMemberModalProps {
@@ -8,6 +8,8 @@ interface FamilyMemberModalProps {
   onSave: (memberData: Omit<FamilyMember, 'id'> & { id?: string }) => void;
   initialData?: FamilyMember | null;
   caseAddress: string;
+  cases: Case[];
+  currentCaseId: string;
 }
 
 type FormErrors = {
@@ -31,11 +33,16 @@ const getInitialFormData = (initialData?: FamilyMember | null): Omit<FamilyMembe
     notes: initialData?.notes || '',
     isFamily: initialData?.isFamily ?? true,
     isConflictual: initialData?.isConflictual || false,
+    caseIdLink: initialData?.caseIdLink || undefined,
 });
 
-const FamilyMemberModal: React.FC<FamilyMemberModalProps> = ({ isOpen, onClose, onSave, initialData, caseAddress }) => {
+const FamilyMemberModal: React.FC<FamilyMemberModalProps> = ({ isOpen, onClose, onSave, initialData, caseAddress, cases, currentCaseId }) => {
     const [formData, setFormData] = useState(getInitialFormData(initialData));
     const [errors, setErrors] = useState<FormErrors>({});
+
+    const otherCases = useMemo(() => {
+        return cases.filter(c => c.id !== currentCaseId).sort((a,b) => a.name.localeCompare(b.name));
+    }, [cases, currentCaseId]);
 
     useEffect(() => {
         if (isOpen) {
@@ -64,6 +71,34 @@ const FamilyMemberModal: React.FC<FamilyMemberModalProps> = ({ isOpen, onClose, 
             setErrors(prev => ({ ...prev, [name]: undefined }));
         }
     };
+
+    const handleCaseLinkChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const linkedCaseId = e.target.value;
+        if (linkedCaseId) {
+            const linkedCase = cases.find(c => c.id === linkedCaseId);
+            setFormData(prev => ({
+                ...prev,
+                caseIdLink: linkedCaseId,
+                name: linkedCase?.name || '',
+                phone: linkedCase?.phone || '',
+                email: linkedCase?.email || '',
+                address: linkedCase?.address || '',
+                // Assuming `birthDate` is not directly on the case object,
+                // but if it were, you would add it here.
+                // For now, we will clear it or disable it.
+                // Let's assume birthDate is not on the top-level case object.
+            }));
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                caseIdLink: undefined,
+                name: initialData && !initialData.caseIdLink ? initialData.name : '',
+                phone: initialData && !initialData.caseIdLink ? initialData.phone : '',
+                email: initialData && !initialData.caseIdLink ? initialData.email : '',
+                address: initialData && !initialData.caseIdLink ? initialData.address : '',
+            }));
+        }
+    };
     
     const validate = (): boolean => {
         const newErrors: FormErrors = {};
@@ -84,7 +119,7 @@ const FamilyMemberModal: React.FC<FamilyMemberModalProps> = ({ isOpen, onClose, 
     
     if (!isOpen) return null;
 
-    const formInputStyle = (hasError: boolean) => `w-full px-4 py-3 text-base border rounded-lg focus:outline-none focus:ring-2 bg-slate-100 text-slate-900 placeholder:text-slate-500 ${hasError ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 focus:ring-teal-500'}`;
+    const formInputStyle = (hasError: boolean, disabled: boolean = false) => `w-full px-4 py-3 text-base border rounded-lg focus:outline-none focus:ring-2 ${disabled ? 'bg-slate-200 cursor-not-allowed' : 'bg-slate-100'} text-slate-900 placeholder:text-slate-500 ${hasError ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 focus:ring-teal-500'}`;
     const relationshipOptions = formData.isFamily ? familyRelationships : nonFamilyRelationships;
 
     return (
@@ -98,10 +133,17 @@ const FamilyMemberModal: React.FC<FamilyMemberModalProps> = ({ isOpen, onClose, 
                     <button onClick={onClose} className="text-slate-500 hover:text-slate-800"><IoCloseOutline className="text-3xl" /></button>
                 </div>
                 <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
+                    <div>
+                        <label htmlFor="caseIdLink" className="block text-slate-700 font-semibold mb-2">Vincular a caso existente (opcional)</label>
+                        <select id="caseIdLink" name="caseIdLink" value={formData.caseIdLink || ''} onChange={handleCaseLinkChange} className={formInputStyle(false)}>
+                            <option value="">-- Ninguno (introducir datos manualmente) --</option>
+                            {otherCases.map(c => <option key={c.id} value={c.id}>{c.name}{c.nickname ? ` (${c.nickname})` : ''}</option>)}
+                        </select>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label htmlFor="name" className="block text-slate-700 font-semibold mb-2">Nombre Completo</label>
-                            <input id="name" name="name" type="text" value={formData.name} onChange={handleChange} className={formInputStyle(!!errors.name)} placeholder="Ej. Ana García" />
+                            <input id="name" name="name" type="text" value={formData.name} onChange={handleChange} className={formInputStyle(!!errors.name, !!formData.caseIdLink)} placeholder="Ej. Ana García" disabled={!!formData.caseIdLink} />
                             {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name}</p>}
                         </div>
                         <div>
@@ -131,18 +173,18 @@ const FamilyMemberModal: React.FC<FamilyMemberModalProps> = ({ isOpen, onClose, 
                         </div>
                         <div>
                             <label htmlFor="phone" className="block text-slate-700 font-semibold mb-2">Teléfono</label>
-                            <input id="phone" name="phone" type="tel" value={formData.phone} onChange={handleChange} className={formInputStyle(false)} />
+                            <input id="phone" name="phone" type="tel" value={formData.phone} onChange={handleChange} className={formInputStyle(false, !!formData.caseIdLink)} disabled={!!formData.caseIdLink} />
                         </div>
                         <div className="md:col-span-2">
                              <label htmlFor="email" className="block text-slate-700 font-semibold mb-2">Correo Electrónico</label>
-                            <input id="email" name="email" type="email" value={formData.email} onChange={handleChange} className={formInputStyle(!!errors.email)} />
+                            <input id="email" name="email" type="email" value={formData.email} onChange={handleChange} className={formInputStyle(!!errors.email, !!formData.caseIdLink)} disabled={!!formData.caseIdLink} />
                             {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
                         </div>
                          <div className="md:col-span-2">
                              <label htmlFor="address" className="block text-slate-700 font-semibold mb-2">Dirección</label>
                             <div className="flex items-center gap-2">
-                                <input id="address" name="address" type="text" value={formData.address} onChange={handleChange} className={formInputStyle(false)} />
-                                {caseAddress && <button type="button" onClick={() => setFormData(prev => ({ ...prev, address: caseAddress }))} className="text-sm text-teal-600 hover:text-teal-800 whitespace-nowrap">Usar la del caso</button>}
+                                <input id="address" name="address" type="text" value={formData.address} onChange={handleChange} className={formInputStyle(false, !!formData.caseIdLink)} disabled={!!formData.caseIdLink} />
+                                {caseAddress && <button type="button" onClick={() => setFormData(prev => ({ ...prev, address: caseAddress }))} className="text-sm text-teal-600 hover:text-teal-800 whitespace-nowrap disabled:text-slate-400 disabled:cursor-not-allowed" disabled={!!formData.caseIdLink}>Usar la del caso</button>}
                             </div>
                         </div>
                     </div>

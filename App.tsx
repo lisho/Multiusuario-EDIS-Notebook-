@@ -950,6 +950,8 @@ const App: React.FC = () => {
                         onConversionHandled={() => setTaskToConvert(null)}
                         initialView={initialDashboardView}
                         currentUser={currentUser}
+                        cases={cases}
+                        onSelectCaseById={handleSelectCaseById}
                     />;
         }
 

@@ -50,7 +50,7 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
     
     const allPresentInterventionTypes = useMemo(() => {
         const types = new Set(allInterventions.map(i => i.interventionType as string));
-        // Fix: Explicitly type the parameters of the sort function to avoid potential type inference issues.
+        // FIX: Explicitly type the parameters of the sort function to avoid potential type inference issues.
         return Array.from(types).sort((a: string, b: string) => a.localeCompare(b));
     }, [allInterventions]);
     

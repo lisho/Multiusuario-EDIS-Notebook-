@@ -140,6 +140,7 @@ export interface FamilyMember {
     notes: string;
     isFamily: boolean;
     isConflictual: boolean;
+    caseIdLink?: string;
 }
 
 export interface MyNote {

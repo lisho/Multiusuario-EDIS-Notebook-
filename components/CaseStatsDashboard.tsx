@@ -274,10 +274,11 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         const twentyFiveHoursAgo = new Date().getTime() - (25 * 60 * 60 * 1000);
 
         return allInterventions.filter(event =>
+            event.createdBy === currentUser.id &&
             event.status === InterventionStatus.Planned &&
             new Date(event.start).getTime() < twentyFiveHoursAgo
         );
-    }, [cases, generalInterventions]);
+    }, [cases, generalInterventions, currentUser]);
 
     const casesWithMissingProfs = useMemo(() => {
         const activeCases = cases.filter(c => c.status !== CaseStatus.Closed);

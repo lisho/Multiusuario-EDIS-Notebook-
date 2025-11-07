@@ -1,11 +1,12 @@
 import React from 'react';
 import { FamilyMember } from '../types';
-import { IoPersonCircleOutline, IoCallOutline, IoMailOutline, IoLocationOutline, IoPencilOutline, IoTrashOutline } from 'react-icons/io5';
+import { IoPersonCircleOutline, IoCallOutline, IoMailOutline, IoLocationOutline, IoPencilOutline, IoTrashOutline, IoBriefcaseOutline } from 'react-icons/io5';
 
 interface ContactCardProps {
     member: FamilyMember;
     onEdit: () => void;
     onDelete: () => void;
+    onSelectCaseById?: (caseId: string) => void;
 }
 
 
@@ -28,10 +29,16 @@ const calculateAge = (birthDateString: string): number | null => {
     }
 };
 
-const ContactCard: React.FC<ContactCardProps> = ({ member, onEdit, onDelete }) => {
+const ContactCard: React.FC<ContactCardProps> = ({ member, onEdit, onDelete, onSelectCaseById }) => {
     const age = calculateAge(member.birthDate);
     const cardBorderColor = member.isConflictual ? 'border-red-300' : 'border-slate-200';
     const cardBgColor = member.isConflictual ? 'bg-red-50' : 'bg-slate-50';
+
+    const handleNameClick = () => {
+        if (member.caseIdLink && onSelectCaseById) {
+            onSelectCaseById(member.caseIdLink);
+        }
+    };
 
     return (
         <div className={`border rounded-lg p-4 flex flex-col justify-between hover:shadow-sm transition-shadow ${cardBorderColor} ${cardBgColor}`}>
@@ -41,7 +48,16 @@ const ContactCard: React.FC<ContactCardProps> = ({ member, onEdit, onDelete }) =
                         <IoPersonCircleOutline className="text-4xl text-slate-400" />
                     </div>
                     <div>
-                        <h4 className="font-bold text-slate-800">{member.name || <span className="italic text-slate-400">Sin nombre</span>}</h4>
+                        <h4 className="font-bold text-slate-800">
+                            {member.caseIdLink && onSelectCaseById ? (
+                                <button onClick={handleNameClick} className="hover:underline text-teal-700 flex items-center gap-1.5 group/link">
+                                    <span>{member.name || <span className="italic text-slate-400">Sin nombre</span>}</span>
+                                    <IoBriefcaseOutline className="text-teal-600/70 group-hover/link:text-teal-600" title="Este contacto es titular de otro caso"/>
+                                </button>
+                            ) : (
+                                member.name || <span className="italic text-slate-400">Sin nombre</span>
+                            )}
+                        </h4>
                         <div className="flex items-baseline gap-2">
                             <p className="text-sm font-medium text-teal-700">{member.relationship || <span className="italic text-slate-400">Sin relación</span>}</p>
                             {age !== null && <p className="text-sm text-slate-500">({age} años)</p>}
