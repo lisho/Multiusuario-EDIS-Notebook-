@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { Case, Task, Professional, DashboardView, User } from '../types';
-import { IoCloseOutline, IoAddOutline, IoTrashOutline, IoArrowRedoOutline, IoChevronForwardCircleOutline } from 'react-icons/io5';
+import { IoCloseOutline, IoAddOutline, IoTrashOutline, IoArrowRedoOutline, IoChevronForwardCircleOutline, IoPencilOutline } from 'react-icons/io5';
 
 interface TaskItemProps {
     task: Task;
     onToggle: () => void;
     onDelete: () => void;
     onConvertToEntry: () => void;
+    onUpdate: (updatedTask: Task) => void;
     professionals: Professional[];
     caseName?: string;
     onSelectCase?: () => void;
@@ -14,10 +15,45 @@ interface TaskItemProps {
 
 const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
-const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onDelete, onConvertToEntry, professionals, caseName, onSelectCase }) => {
+const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onDelete, onConvertToEntry, onUpdate, professionals, caseName, onSelectCase }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState(task.text);
+
     const assignedProfs = (task.assignedTo || [])
         .map(id => professionals.find(p => p.id === id))
         .filter(Boolean) as Professional[];
+        
+    const handleSaveEdit = () => {
+        if (editText.trim() && editText.trim() !== task.text) {
+            onUpdate({ ...task, text: editText.trim() });
+        }
+        setIsEditing(false);
+    };
+
+    if (isEditing) {
+        return (
+            <div className="flex items-center gap-2 p-2.5 bg-white rounded-lg border-2 border-teal-500 shadow-md w-full">
+                <input
+                    type="checkbox"
+                    checked={task.completed}
+                    onChange={onToggle}
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer flex-shrink-0"
+                />
+                <input
+                    type="text"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); handleSaveEdit(); }
+                        if (e.key === 'Escape') setIsEditing(false);
+                    }}
+                    onBlur={handleSaveEdit}
+                    className="flex-grow text-sm text-slate-800 bg-slate-100 border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-teal-500 w-full"
+                    autoFocus
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="flex items-start gap-3 p-2.5 bg-white rounded-lg border border-slate-200 group">
@@ -45,6 +81,9 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onDelete, onConvert
                 </div>
             </div>
             <div className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => setIsEditing(true)} className="p-1 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-100" title="Editar Tarea">
+                    <IoPencilOutline />
+                </button>
                 {!task.completed && (
                     <button onClick={onConvertToEntry} className="p-1 text-slate-400 hover:text-teal-600 rounded-full hover:bg-slate-100" title="Convertir en Entrada">
                         <IoArrowRedoOutline />
@@ -69,15 +108,17 @@ interface TasksSidePanelProps {
     onAddTask: (caseId: string | null, taskText: string, assignedTo?: string[]) => void;
     onToggleTask: (caseId: string, taskId: string) => void;
     onDeleteTask: (caseId: string, taskId: string) => void;
+    onUpdateTask: (caseId: string, updatedTask: Task) => void;
     onToggleGeneralTask: (taskId: string) => void;
     onDeleteGeneralTask: (taskId: string) => void;
+    onUpdateGeneralTask: (updatedTask: Task) => void;
     onTaskToEntry: (task: Task) => void;
     onSelectCaseById: (caseId: string, view: DashboardView) => void;
     currentUser: User | null;
 }
 
 const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
-    const { mode, caseData, allCases, generalTasks, professionals, onClose, onAddTask, onToggleTask, onDeleteTask, onToggleGeneralTask, onDeleteGeneralTask, onTaskToEntry, onSelectCaseById, currentUser } = props;
+    const { mode, caseData, allCases, generalTasks, professionals, onClose, onAddTask, onToggleTask, onDeleteTask, onUpdateTask, onToggleGeneralTask, onDeleteGeneralTask, onUpdateGeneralTask, onTaskToEntry, onSelectCaseById, currentUser } = props;
     
     const [newTaskText, setNewTaskText] = useState('');
     const isOpen = mode !== 'closed';
@@ -128,17 +169,35 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                             <h4 className="font-semibold text-slate-700 mb-2">Tareas Generales</h4>
                             <div className="space-y-2">
                                 {generalTasks.map(task => (
-                                    <TaskItem key={task.id} task={task} onToggle={() => onToggleGeneralTask(task.id)} onDelete={() => onDeleteGeneralTask(task.id)} onConvertToEntry={() => {}} professionals={[]} />
+                                    <TaskItem 
+                                        key={task.id} 
+                                        task={task} 
+                                        onToggle={() => onToggleGeneralTask(task.id)} 
+                                        onDelete={() => onDeleteGeneralTask(task.id)} 
+                                        onConvertToEntry={() => {}} 
+                                        onUpdate={onUpdateGeneralTask}
+                                        professionals={[]} 
+                                    />
                                 ))}
                             </div>
                         </div>
                     )}
 
                     {mode === 'single' && caseData && caseData.tasks.map(task => (
-                        <TaskItem key={task.id} task={task} onToggle={() => onToggleTask(caseData.id, task.id)} onDelete={() => onDeleteTask(caseData.id, task.id)} onConvertToEntry={() => { onTaskToEntry(task); onClose(); }} professionals={professionals} />
+                        <TaskItem 
+                            key={task.id} 
+                            task={task} 
+                            onToggle={() => onToggleTask(caseData.id, task.id)} 
+                            onDelete={() => onDeleteTask(caseData.id, task.id)} 
+                            onConvertToEntry={() => { onTaskToEntry(task); onClose(); }} 
+                            onUpdate={(updatedTask) => onUpdateTask(caseData.id, updatedTask)}
+                            professionals={professionals} 
+                        />
                     ))}
                     
-                    {mode === 'all' && Object.entries(tasksByCase).map(([caseId, tasks]) => {
+                    {/* FIX: Replaced Object.entries with Object.keys to work around a type inference issue where the destructured 'tasks' variable was being typed as 'unknown'. */}
+                    {mode === 'all' && Object.keys(tasksByCase).map(caseId => {
+                        const tasks = tasksByCase[caseId];
                         const currentCase = allCases.find(c => c.id === caseId);
                         if (!currentCase) return null;
                         return (
@@ -151,7 +210,15 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                 </h4>
                                 <div className="space-y-2">
                                     {tasks.map(task => (
-                                         <TaskItem key={task.id} task={task} onToggle={() => onToggleTask(caseId, task.id)} onDelete={() => onDeleteTask(caseId, task.id)} onConvertToEntry={() => { onSelectCaseById(caseId, 'tasks'); onTaskToEntry(task); }} professionals={professionals} />
+                                         <TaskItem 
+                                            key={task.id} 
+                                            task={task} 
+                                            onToggle={() => onToggleTask(caseId, task.id)} 
+                                            onDelete={() => onDeleteTask(caseId, task.id)} 
+                                            onConvertToEntry={() => { onSelectCaseById(caseId, 'tasks'); onTaskToEntry(task); }} 
+                                            onUpdate={(updatedTask) => onUpdateTask(caseId, updatedTask)}
+                                            professionals={professionals} 
+                                        />
                                     ))}
                                 </div>
                             </div>

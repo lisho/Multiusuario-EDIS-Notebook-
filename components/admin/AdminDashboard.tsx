@@ -5,7 +5,8 @@ import ProfessionalEditorModal from './ProfessionalEditorModal';
 import CsvImportModal from './CsvImportModal';
 import InterventionManager from './InterventionManager';
 import NewEventModal from '../NewEventModal';
-import { IoAddOutline, IoPencilOutline, IoTrashOutline, IoPeopleOutline, IoConstructOutline, IoBriefcaseOutline, IoChevronDownOutline, IoCloudUploadOutline, IoCalendarOutline } from 'react-icons/io5';
+import AdminStatsDashboard from './AdminStatsDashboard';
+import { IoAddOutline, IoPencilOutline, IoTrashOutline, IoPeopleOutline, IoConstructOutline, IoBriefcaseOutline, IoChevronDownOutline, IoCloudUploadOutline, IoCalendarOutline, IoBarChartOutline } from 'react-icons/io5';
 
 interface AdminDashboardProps {
   tools: AdminTool[];
@@ -24,7 +25,7 @@ interface AdminDashboardProps {
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
 }
 
-type AdminTab = 'tools' | 'professionals' | 'interventions';
+type AdminTab = 'tools' | 'professionals' | 'interventions' | 'stats';
 
 const momentConfig = {
     [InterventionMoment.Referral]: { title: 'Derivación', description: 'Herramientas para registrar la derivación del caso.' },
@@ -90,7 +91,7 @@ const ProfessionalSection: React.FC<{
 // FIX: Changed to a named export to resolve the "Module has no default export" error.
 export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const { tools, onSaveTool, onDeleteTool, professionals, onSaveProfessional, onDeleteProfessional, cases, onBatchAddInterventions, generalInterventions, onSaveIntervention, onBatchUpdateInterventions, onDeleteIntervention, onBatchDeleteInterventions, requestConfirmation } = props;
-  const [activeTab, setActiveTab] = useState<AdminTab>('professionals');
+  const [activeTab, setActiveTab] = useState<AdminTab>('stats');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingTool, setEditingTool] = useState<AdminTool | null>(null);
   const [defaultMoment, setDefaultMoment] = useState<InterventionMoment>(InterventionMoment.Welcome);
@@ -195,6 +196,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         <div className="container mx-auto px-4 py-8">
             <div className="border-b border-slate-200">
                 <nav className="-mb-px flex gap-6">
+                    <TabButton tab="stats" label="Estadísticas" icon={IoBarChartOutline} />
                     <TabButton tab="tools" label="Caja de Herramientas" icon={IoConstructOutline} />
                     <TabButton tab="professionals" label="Gestor de Profesionales" icon={IoBriefcaseOutline} />
                     <TabButton tab="interventions" label="Intervenciones" icon={IoCalendarOutline} />
@@ -202,6 +204,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             </div>
         
             <div className="mt-8">
+                {activeTab === 'stats' && (
+                    <AdminStatsDashboard 
+                        cases={cases}
+                        professionals={professionals}
+                        allInterventions={allInterventions}
+                    />
+                )}
+
                 {activeTab === 'tools' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                         <div className="space-y-6">

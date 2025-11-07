@@ -17,7 +17,8 @@ const RelationalEnvView: React.FC<RelationalEnvViewProps> = ({ caseData, onUpdat
   const [editingMember, setEditingMember] = useState<FamilyMember | null>(null);
 
   const hydratedContacts = useMemo(() => {
-    const caseMap = new Map(cases.map(c => [c.id, c]));
+    // FIX: Explicitly type the Map to help TypeScript's type inference, which was incorrectly typing `linkedCase` as `unknown`.
+    const caseMap = new Map<string, Case>(cases.map(c => [c.id, c]));
     const originalContacts = caseData.familyGrid || [];
 
     return originalContacts.map(contact => {

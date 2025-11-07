@@ -453,6 +453,16 @@ const App: React.FC = () => {
         );
     };
 
+    const handleUpdateGeneralTask = async (updatedTask: Task) => {
+        const taskRef = doc(db, "generalTasks", updatedTask.id);
+        try {
+            await updateDoc(taskRef, { text: updatedTask.text });
+            setGeneralTasks(generalTasks.map(t => t.id === updatedTask.id ? updatedTask : t));
+        } catch (error) {
+            console.error("Error updating general task:", error);
+        }
+    };
+
     const handleSaveTool = async (tool: AdminTool) => {
         const toolRef = doc(db, "adminTools", tool.id);
         try {
@@ -1218,8 +1228,10 @@ const App: React.FC = () => {
                 onAddTask={handleAddTask}
                 onToggleTask={handleToggleTask}
                 onDeleteTask={handleDeleteTask}
+                onUpdateTask={handleUpdateTask}
                 onToggleGeneralTask={handleToggleGeneralTask}
                 onDeleteGeneralTask={handleDeleteGeneralTask}
+                onUpdateGeneralTask={handleUpdateGeneralTask}
                 onTaskToEntry={setTaskToConvert}
                 onSelectCaseById={handleSelectCaseById}
                 currentUser={currentUser}
