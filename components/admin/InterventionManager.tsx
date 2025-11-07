@@ -309,9 +309,14 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
     const handleBulkTypeCorrection = (invalidType: string) => {
         const newType = newTypeSelections[invalidType];
         if (!newType) return;
-        
+
         const interventionsToUpdate = inconsistentInterventionsGrouped[invalidType];
-        
+
+        // FIX: Add a guard to ensure interventionsToUpdate is defined before accessing .length, resolving a type error where it could be 'unknown'.
+        if (!Array.isArray(interventionsToUpdate)) {
+            return;
+        }
+
         requestConfirmation(
             'Confirmar Corrección Masiva',
             `¿Estás seguro de que quieres cambiar ${interventionsToUpdate.length} intervenciones de tipo "${invalidType}" a "${newType}"? Esta acción es permanente.`,
