@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Professional, ProfessionalRole } from '../types';
-import { IoCloseOutline, IoSaveOutline, IoPersonCircleOutline } from 'react-icons/io5';
+import { IoCloseOutline, IoSaveOutline, IoPersonCircleOutline, IoChevronDownOutline, IoLockClosedOutline, IoEyeOutline, IoEyeOffOutline } from 'react-icons/io5';
 
 interface ProfileEditorModalProps {
   isOpen: boolean;
@@ -18,8 +18,16 @@ const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({ isOpen, onClose
         phone: '',
         avatar: '',
     });
-    const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; email?: string, password?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
+    
+    const [isPasswordSectionOpen, setIsPasswordSectionOpen] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [isCurrentPasswordVisible, setIsCurrentPasswordVisible] = useState(false);
+    const [isNewPasswordVisible, setIsNewPasswordVisible] = useState(false);
+    const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
 
     useEffect(() => {
         if (isOpen && currentUser) {
@@ -30,6 +38,10 @@ const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({ isOpen, onClose
                 avatar: currentUser.avatar || '',
             });
             setErrors({});
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+            setIsPasswordSectionOpen(false);
         }
     }, [isOpen, currentUser]);
 
@@ -74,7 +86,6 @@ const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({ isOpen, onClose
                 
                 ctx.drawImage(img, 0, 0, width, height);
                 
-                // Use JPEG for smaller file size, quality 0.9 is a good balance
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
                 
                 setFormData(prev => ({ ...prev, avatar: dataUrl }));
@@ -85,12 +96,23 @@ const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({ isOpen, onClose
     };
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; email?: string } = {};
+        const newErrors: { name?: string; email?: string, password?: string } = {};
         if (!formData.name.trim()) {
             newErrors.name = 'El nombre es obligatorio.';
         }
         if (formData.email && !emailRegex.test(formData.email)) {
             newErrors.email = 'El formato del correo no es válido.';
+        }
+        if (isPasswordSectionOpen && (newPassword || confirmPassword || currentPassword)) {
+            if (!currentUser.password) {
+                 newErrors.password = 'No se puede cambiar la contraseña porque no tienes una establecida. Contacta a un administrador.';
+            } else if (currentPassword !== currentUser.password) {
+                newErrors.password = 'La contraseña actual es incorrecta.';
+            } else if (newPassword.length < 6) {
+                newErrors.password = 'La nueva contraseña debe tener al menos 6 caracteres.';
+            } else if (newPassword !== confirmPassword) {
+                newErrors.password = 'Las nuevas contraseñas no coinciden.';
+            }
         }
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -99,10 +121,11 @@ const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({ isOpen, onClose
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (validate()) {
-            onSave({
-                ...currentUser,
-                ...formData
-            });
+            const finalProfessional = { ...currentUser, ...formData };
+            if (isPasswordSectionOpen && newPassword) {
+                finalProfessional.password = newPassword;
+            }
+            onSave(finalProfessional);
             onClose();
         }
     };
@@ -122,7 +145,7 @@ const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({ isOpen, onClose
                         <IoCloseOutline className="text-3xl" />
                     </button>
                 </div>
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
                     <div className="flex flex-col items-center gap-4">
                         <div className="w-24 h-24 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-3xl overflow-hidden border-4 border-teal-200">
                             {formData.avatar ? (
@@ -169,6 +192,32 @@ const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({ isOpen, onClose
                             </div>
                         )}
                     </div>
+                     <div className="mt-4 pt-4 border-t border-slate-200">
+                        <button type="button" onClick={() => setIsPasswordSectionOpen(!isPasswordSectionOpen)} className="w-full flex justify-between items-center font-semibold text-slate-800">
+                            <span className="flex items-center gap-2"><IoLockClosedOutline /> Cambiar Contraseña</span>
+                            <IoChevronDownOutline className={`transition-transform ${isPasswordSectionOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isPasswordSectionOpen && (
+                            <div className="mt-4 space-y-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                                <div className="relative">
+                                    <label className="block text-slate-700 font-semibold mb-2 text-sm">Contraseña Actual</label>
+                                    <input type={isCurrentPasswordVisible ? 'text' : 'password'} value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} className={formInputStyle(!!errors.password) + " pr-10"} />
+                                    <button type="button" onClick={() => setIsCurrentPasswordVisible(!isCurrentPasswordVisible)} className="absolute inset-y-0 right-0 top-6 px-3 flex items-center text-slate-500"><IoEyeOutline/></button>
+                                </div>
+                                 <div className="relative">
+                                    <label className="block text-slate-700 font-semibold mb-2 text-sm">Nueva Contraseña</label>
+                                    <input type={isNewPasswordVisible ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)} className={formInputStyle(!!errors.password) + " pr-10"} />
+                                    <button type="button" onClick={() => setIsNewPasswordVisible(!isNewPasswordVisible)} className="absolute inset-y-0 right-0 top-6 px-3 flex items-center text-slate-500"><IoEyeOutline/></button>
+                                </div>
+                                <div className="relative">
+                                    <label className="block text-slate-700 font-semibold mb-2 text-sm">Confirmar Nueva Contraseña</label>
+                                    <input type={isConfirmPasswordVisible ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={formInputStyle(!!errors.password) + " pr-10"} />
+                                    <button type="button" onClick={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)} className="absolute inset-y-0 right-0 top-6 px-3 flex items-center text-slate-500"><IoEyeOutline/></button>
+                                </div>
+                                {errors.password && <p className="text-red-600 text-sm">{errors.password}</p>}
+                            </div>
+                        )}
+                     </div>
                 </form>
                 <div className="flex justify-end gap-4 p-4 mt-auto border-t border-slate-200 bg-slate-50 rounded-b-lg">
                     <button type="button" onClick={onClose} className="py-2 px-4 text-slate-700 bg-slate-200 rounded-lg hover:bg-slate-300 font-semibold">Cancelar</button>

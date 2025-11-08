@@ -131,6 +131,7 @@ const getInterventionHexColor = (type: string): string => {
 
 const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, professionals, allInterventions }) => {
     const [hiddenSeries, setHiddenSeries] = useState<Record<string, boolean>>({});
+    const [selectedYear, setSelectedYear] = useState<string>('all');
 
     const stats = useMemo(() => {
         const totalCases = cases.length;
@@ -185,9 +186,18 @@ const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, profes
             .filter(p => p.value > 0)
             .sort((a, b) => b.value - a.value);
 
+        const availableYears = Array.from(new Set(allInterventions
+            .map(i => new Date(i.start).getFullYear().toString())
+            .filter(year => parseInt(year) >= 2020)
+        )).sort((a, b) => parseInt(b) - parseInt(a));
+        
+        const filteredInterventionsByYear = selectedYear === 'all'
+            ? allInterventions
+            : allInterventions.filter(i => new Date(i.start).getFullYear().toString() === selectedYear);
+
         const interventionsByMonthType: Record<string, Record<string, number>> = {};
         const interventionTypes = new Set<string>();
-        allInterventions.forEach(intervention => {
+        filteredInterventionsByYear.forEach(intervention => {
             const date = new Date(intervention.start);
             if (isNaN(date.getTime()) || date.getFullYear() < 2020) return;
 
@@ -204,8 +214,7 @@ const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, profes
         const currentMonthKey = `${new Date().getFullYear()}-${(new Date().getMonth() + 1).toString().padStart(2, '0')}`;
         const sortedMonths = Object.keys(interventionsByMonthType)
             .sort()
-            .filter(month => month <= currentMonthKey)
-            .slice(-12);
+            .filter(month => month <= currentMonthKey);
 
         const sortedTypes = Array.from(interventionTypes).sort();
 
@@ -222,9 +231,10 @@ const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, profes
             totalCases, activeCasesCount, totalProfessionals, edisCount, tsCount, totalInterventions,
             interventionsByTypeChartData, casesByEdisData,
             casesByTsData, casesByCeasData, interventionsByMonthChartData,
+            availableYears
         };
 
-    }, [cases, professionals, allInterventions]);
+    }, [cases, professionals, allInterventions, selectedYear]);
     
     useEffect(() => {
         const initialVisibility = stats.interventionsByMonthChartData.datasets.reduce((acc, dataset) => {
@@ -373,11 +383,35 @@ const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, profes
                     </ResponsiveContainer>
                  </AnimatedSection>
                  <AnimatedSection className="lg:col-span-3 bg-white p-6 rounded-lg shadow-sm border border-slate-200" delayChildRender placeholderHeight={400}>
-                    <h3 className="text-lg font-bold text-slate-800 mb-4">Evolución de Intervenciones por Mes</h3>
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
+                        <h3 className="text-lg font-bold text-slate-800">Evolución de Intervenciones por Mes</h3>
+                         <div>
+                            <label htmlFor="year-filter" className="text-sm font-medium text-slate-600 mr-2">Año:</label>
+                            <select
+                                id="year-filter"
+                                value={selectedYear}
+                                onChange={(e) => setSelectedYear(e.target.value)}
+                                className="px-3 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-white border-slate-300 focus:ring-teal-500 text-slate-900"
+                            >
+                                <option value="all">Todos</option>
+                                {stats.availableYears.map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
                     <ResponsiveContainer width="100%" height={400}>
                         <RechartsLineChart data={lineChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                            <XAxis
+                                dataKey="name"
+                                tick={{ fontSize: 12 }}
+                                tickFormatter={(tick) => {
+                                    if (typeof tick !== 'string' || !tick.includes('-')) return tick;
+                                    const [year, month] = tick.split('-');
+                                    return `${month}/${year}`;
+                                }}
+                            />
                             <YAxis />
                             <Tooltip />
                             <Legend onClick={handleLegendClick} />

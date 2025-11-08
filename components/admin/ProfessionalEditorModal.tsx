@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Professional, ProfessionalRole } from '../../types';
-import { IoCloseOutline, IoSaveOutline, IoPeopleOutline } from 'react-icons/io5';
+import { IoCloseOutline, IoSaveOutline, IoPeopleOutline, IoLockClosedOutline, IoEyeOutline, IoEyeOffOutline } from 'react-icons/io5';
 
 interface ProfessionalEditorModalProps {
   isOpen: boolean;
@@ -18,6 +18,7 @@ const getInitialProfessional = (role: ProfessionalRole): Omit<Professional, 'id'
     email: '',
     isSystemUser: role === ProfessionalRole.EdisTechnician,
     systemRole: 'tecnico',
+    password: '',
 });
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -34,7 +35,11 @@ const ceasOptions = [
 
 const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpen, onClose, onSave, initialData, defaultRole }) => {
   const [professional, setProfessional] = useState(getInitialProfessional(defaultRole));
-  const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
+  const [errors, setErrors] = useState<{ name?: string; email?: string, password?: string }>({});
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isNewPasswordVisible, setIsNewPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -47,6 +52,8 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
             setProfessional(getInitialProfessional(defaultRole));
         }
         setErrors({});
+        setNewPassword('');
+        setConfirmPassword('');
     }
   }, [isOpen, initialData, defaultRole]);
 
@@ -72,12 +79,19 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
   };
 
   const validate = (): boolean => {
-    const newErrors: { name?: string; email?: string } = {};
+    const newErrors: { name?: string; email?: string, password?: string } = {};
     if (!professional.name.trim()) {
       newErrors.name = 'El nombre es obligatorio.';
     }
     if (professional.role === ProfessionalRole.SocialWorker && professional.email && !emailRegex.test(professional.email)) {
         newErrors.email = 'El formato del correo no es válido.';
+    }
+    if (newPassword || confirmPassword) {
+        if (newPassword.length < 6) {
+            newErrors.password = 'La contraseña debe tener al menos 6 caracteres.';
+        } else if (newPassword !== confirmPassword) {
+            newErrors.password = 'Las contraseñas no coinciden.';
+        }
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -91,6 +105,9 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
         ...professional,
         name: professional.name.trim(),
       };
+      if(newPassword){
+        finalProfessional.password = newPassword;
+      }
       onSave(finalProfessional);
     }
   };
@@ -102,7 +119,7 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
         <div className="flex justify-between items-center p-4 border-b border-slate-200">
             <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                 <IoPeopleOutline className="text-teal-600"/>
@@ -112,7 +129,7 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
             <IoCloseOutline className="text-3xl" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
             <div>
                 <label htmlFor="role" className="block text-slate-700 font-semibold mb-2">Rol Profesional</label>
                 <select id="role" name="role" value={professional.role} onChange={handleChange} className={formInputStyle(false)}>
@@ -158,13 +175,34 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
                     </label>
 
                     {professional.isSystemUser && (
-                        <div>
-                            <label htmlFor="systemRole" className="block text-slate-700 font-semibold mb-2">Rol del Sistema</label>
-                            <select id="systemRole" name="systemRole" value={professional.systemRole || 'tecnico'} onChange={handleChange} className={formInputStyle(false)}>
-                                <option value="tecnico">Técnico</option>
-                                <option value="admin">Administrador</option>
-                            </select>
-                        </div>
+                        <>
+                            <div>
+                                <label htmlFor="systemRole" className="block text-slate-700 font-semibold mb-2">Rol del Sistema</label>
+                                <select id="systemRole" name="systemRole" value={professional.systemRole || 'tecnico'} onChange={handleChange} className={formInputStyle(false)}>
+                                    <option value="tecnico">Técnico</option>
+                                    <option value="admin">Administrador</option>
+                                </select>
+                            </div>
+                             <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                                <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2"><IoLockClosedOutline /> Gestión de Contraseña</h4>
+                                {isEditing && !(professional as Professional).password && (
+                                    <p className="text-sm text-amber-700 bg-amber-100 p-2 rounded-md mb-3">Este usuario no tiene contraseña. Establece una para habilitar el inicio de sesión.</p>
+                                )}
+                                <div className="space-y-4">
+                                    <div className="relative">
+                                        <label className="block text-slate-700 font-semibold mb-2 text-sm">Nueva Contraseña</label>
+                                        <input type={isNewPasswordVisible ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)} className={formInputStyle(!!errors.password) + " pr-10"} placeholder="Dejar en blanco para no cambiar"/>
+                                        <button type="button" onClick={() => setIsNewPasswordVisible(!isNewPasswordVisible)} className="absolute inset-y-0 right-0 top-6 px-3 flex items-center text-slate-500 hover:text-slate-700"><IoEyeOutline/></button>
+                                    </div>
+                                     <div className="relative">
+                                        <label className="block text-slate-700 font-semibold mb-2 text-sm">Confirmar Contraseña</label>
+                                        <input type={isConfirmPasswordVisible ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={formInputStyle(!!errors.password) + " pr-10"} />
+                                        <button type="button" onClick={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)} className="absolute inset-y-0 right-0 top-6 px-3 flex items-center text-slate-500 hover:text-slate-700"><IoEyeOutline/></button>
+                                    </div>
+                                </div>
+                                {errors.password && <p className="text-red-600 text-sm mt-2">{errors.password}</p>}
+                            </div>
+                        </>
                     )}
                 </div>
             )}

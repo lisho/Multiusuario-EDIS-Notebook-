@@ -78,6 +78,7 @@ export interface Professional {
     isSystemUser?: boolean; // Can this professional log in?
     systemRole?: 'admin' | 'tecnico'; // If they can log in, what is their role?
     avatar?: string; // Base64 encoded image
+    password?: string; // User's login password
 }
 
 export interface Task {

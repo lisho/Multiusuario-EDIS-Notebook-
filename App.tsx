@@ -143,6 +143,12 @@ const App: React.FC = () => {
                             prof.isSystemUser = false; // Social workers are not system users by default
                         }
                     }
+
+                    // Assign default password to admin if not set
+                    if (prof.systemRole === 'admin' && !prof.password) {
+                        prof.password = 'admin';
+                    }
+                    
                     return prof;
                 }) as Professional[];
                 setProfessionals(professionalsList);
