@@ -13,10 +13,12 @@ import NewTaskModal from './components/NewTaskModal';
 import QuickNoteModal from './components/QuickNoteModal';
 import Login from './components/Login';
 import ProfileEditorModal from './components/ProfileEditorModal';
+import GenogramViewer from './components/GenogramViewer';
 import { Case, CaseStatus, Task, AdminTool, Intervention, InterventionRecord, Professional, DashboardView, MyNote, User, ProfessionalRole } from './types';
-import { db } from './services/firebase';
+import { db, auth } from './services/firebase';
+import { signInAnonymously } from 'firebase/auth';
 import { collection, query, getDocs, addDoc, doc, updateDoc, deleteDoc, writeBatch, setDoc } from 'firebase/firestore';
-import { IoAddOutline, IoCloseCircleOutline, IoSearchOutline, IoChevronDownOutline } from 'react-icons/io5';
+import { IoAddOutline, IoCloseCircleOutline, IoSearchOutline, IoChevronDownOutline, IoWarningOutline, IoCloseOutline } from 'react-icons/io5';
 import { BsPinAngleFill } from 'react-icons/bs';
 
 const AnimatedSection: React.FC<{ children: React.ReactNode; delay: number }> = ({ children, delay }) => {
@@ -87,6 +89,8 @@ const App: React.FC = () => {
     const [isClosedCasesVisible, setIsClosedCasesVisible] = useState(false);
     const [draggedItem, setDraggedItem] = useState<Case | null>(null);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [viewingGenogramUrl, setViewingGenogramUrl] = useState<string | null>(null);
+    const [authError, setAuthError] = useState<string | null>(null);
     const [confirmationState, setConfirmationState] = useState<{
         isOpen: boolean;
         title: string;
@@ -105,6 +109,16 @@ const App: React.FC = () => {
     const handleCloseConfirmation = () => {
         setConfirmationState(null);
     };
+    
+    const handleOpenGenogramViewer = (url: string) => {
+        if (url) {
+            setViewingGenogramUrl(url);
+        }
+    };
+
+    const handleCloseGenogramViewer = () => {
+        setViewingGenogramUrl(null);
+    };
 
     const handleLogin = (professional: Professional) => {
         if (!professional.isSystemUser || !professional.systemRole) return;
@@ -121,6 +135,17 @@ const App: React.FC = () => {
     };
 
     useEffect(() => {
+        // Authenticate with Firebase anonymously to allow Storage operations.
+        // This is necessary because the default storage rules require authentication.
+        signInAnonymously(auth).catch(error => {
+            console.error("Firebase Anonymous sign-in failed:", error);
+             if (error.code === 'auth/configuration-not-found') {
+                setAuthError('Autenticación anónima deshabilitada. Ve a Firebase Console > Authentication > Sign-in method y habilita "Anónimo". Sin esto, la subida de imágenes y otras funciones fallarán.');
+            } else {
+                setAuthError(`Error de autenticación de Firebase: ${error.message}`);
+            }
+        });
+
         const fetchData = async () => {
             setIsLoading(true);
             try {
@@ -1006,6 +1031,7 @@ const App: React.FC = () => {
                         currentUser={currentUser}
                         cases={cases}
                         onSelectCaseById={handleSelectCaseById}
+                        onOpenGenogramViewer={handleOpenGenogramViewer}
                     />;
         }
 
@@ -1236,6 +1262,12 @@ const App: React.FC = () => {
         return <Login professionals={systemUsers} onLogin={handleLogin} />;
     }
 
+    if (viewingGenogramUrl) {
+        return <GenogramViewer imageUrl={viewingGenogramUrl} onClose={handleCloseGenogramViewer} />;
+    }
+
+    const BANNER_HEIGHT = '3.5rem';
+
     return (
         <div className="bg-slate-50 min-h-screen">
             <Header 
@@ -1249,7 +1281,19 @@ const App: React.FC = () => {
                 onLogout={handleLogout}
                 onOpenProfile={() => setIsProfileModalOpen(true)}
             />
-            <main className="pt-[calc(4rem+env(safe-area-inset-top))]">
+             {authError && (
+                <div 
+                    className="fixed left-0 right-0 bg-amber-100 border-b border-amber-300 text-amber-900 p-3 text-center text-sm z-20 flex justify-center items-center gap-4"
+                    style={{ top: '4rem', height: BANNER_HEIGHT }}
+                >
+                    <IoWarningOutline className="text-2xl text-amber-600 flex-shrink-0" />
+                    <span className="flex-grow text-left font-medium">{authError}</span>
+                    <button onClick={() => setAuthError(null)} className="p-1 rounded-full hover:bg-amber-200">
+                        <IoCloseOutline className="text-2xl text-amber-700" />
+                    </button>
+                </div>
+            )}
+            <main className={authError ? "pt-[calc(7.5rem+env(safe-area-inset-top))]" : "pt-[calc(4rem+env(safe-area-inset-top))]"}>
                 {renderContent()}
             </main>
             <NewCaseModal 

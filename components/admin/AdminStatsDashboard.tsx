@@ -189,7 +189,9 @@ const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, profes
         const availableYears = Array.from(new Set(allInterventions
             .map(i => new Date(i.start).getFullYear().toString())
             .filter(year => parseInt(year) >= 2020)
-        )).sort((a, b) => parseInt(b) - parseInt(a));
+        // FIX: Explicitly type the sort parameters to resolve an error where TypeScript could not infer them correctly, leading to an arithmetic operation error.
+        // FIX: Explicitly type the parameters of the sort function to avoid potential type inference issues.
+        )).sort((a: string, b: string) => parseInt(b) - parseInt(a));
         
         const filteredInterventionsByYear = selectedYear === 'all'
             ? allInterventions
@@ -406,8 +408,9 @@ const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, profes
                             <XAxis
                                 dataKey="name"
                                 tick={{ fontSize: 12 }}
-                                tickFormatter={(tick) => {
-                                    if (typeof tick !== 'string' || !tick.includes('-')) return tick;
+                                // FIX: Explicitly type the 'tick' parameter as a string to resolve an error where it was inferred as 'unknown', preventing string operations.
+                                tickFormatter={(tick: string) => {
+                                    if (!tick.includes('-')) return tick;
                                     const [year, month] = tick.split('-');
                                     return `${month}/${year}`;
                                 }}

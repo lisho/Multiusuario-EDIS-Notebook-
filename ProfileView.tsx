@@ -8,11 +8,8 @@ import {
     IoCheckboxOutline,
     IoCheckmarkDoneCircleOutline,
     IoTimeOutline,
-    IoWarningOutline,
-    IoSyncOutline
+    IoWarningOutline
 } from 'react-icons/io5';
-import { storage } from '../services/firebase';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 interface ProfileViewProps {
   caseData: Case;
@@ -20,38 +17,6 @@ interface ProfileViewProps {
   onDeleteCase: (caseId: string) => void;
   onOpenGenogramViewer: (url: string) => void;
 }
-
-// Helper functions for linear async flow
-const readFileAsDataURL = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = (error) => reject(new Error('Error al leer el archivo.'));
-        reader.readAsDataURL(file);
-    });
-};
-
-const loadImage = (dataUrl: string): Promise<HTMLImageElement> => {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error('El archivo seleccionado no es una imagen válida.'));
-        img.src = dataUrl;
-    });
-};
-
-const canvasToBlob = (canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-        canvas.toBlob((blob) => {
-            if (blob) {
-                resolve(blob);
-            } else {
-                reject(new Error('No se pudo convertir la imagen procesada.'));
-            }
-        }, type, quality);
-    });
-};
-
 
 const getCaseFormData = (caseData: Case) => ({
     nickname: caseData.nickname || '',
@@ -67,6 +32,7 @@ const formInputStyle = (hasError: boolean) => `block w-full rounded-lg border sh
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // InputField component is defined outside ProfileView to prevent re-creation on every render.
+// This is the key fix for the focus loss issue.
 const InputField: React.FC<{
     name: string;
     label: string;
@@ -112,12 +78,12 @@ const InputField: React.FC<{
 
 const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDeleteCase, onOpenGenogramViewer }) => {
   const [formData, setFormData] = useState(getCaseFormData(caseData));
-  const [errors, setErrors] = useState<{ email?: string; image?: string }>({});
+  const [errors, setErrors] = useState<{ email?: string }>({});
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const genogramFileInputRef = useRef<HTMLInputElement>(null);
+  // FIX: Explicitly initialize useRef with undefined to fix "Expected 1 arguments, but got 0" error.
   const prevCaseIdRef = useRef<string | undefined>(undefined);
   
   const stats = useMemo(() => {
@@ -140,6 +106,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
   }, [caseData]);
   
   useEffect(() => {
+    // Only reset form state if the case ID has changed.
+    // This prevents resetting (and losing focus) when case data is updated after a save.
     if (prevCaseIdRef.current !== caseData.id) {
         setFormData(getCaseFormData(caseData));
         setErrors({});
@@ -147,6 +115,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
         setIsSaving(false);
         setIsSaved(false);
     }
+    // Always update the current case ID ref for the next comparison.
     prevCaseIdRef.current = caseData.id;
   }, [caseData]);
 
@@ -161,88 +130,51 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
     }
   };
 
-  const handleGenogramImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGenogramImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploading(true);
-    setErrors(prev => ({ ...prev, image: undefined }));
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 1280;
+            const MAX_HEIGHT = 1280;
+            let width = img.width;
+            let height = img.height;
 
-    try {
-      const dataUrl = await readFileAsDataURL(file);
-      const img = await loadImage(dataUrl);
+            if (width > height) {
+                if (width > MAX_WIDTH) {
+                    height *= MAX_WIDTH / width;
+                    width = MAX_WIDTH;
+                }
+            } else {
+                if (height > MAX_HEIGHT) {
+                    width *= MAX_HEIGHT / height;
+                    height = MAX_HEIGHT;
+                }
+            }
 
-      const canvas = document.createElement('canvas');
-      const MAX_WIDTH = 1280;
-      const MAX_HEIGHT = 1280;
-      let width = img.width;
-      let height = img.height;
-
-      if (width > height) {
-        if (width > MAX_WIDTH) {
-          height *= MAX_WIDTH / width;
-          width = MAX_WIDTH;
-        }
-      } else {
-        if (height > MAX_HEIGHT) {
-          width *= MAX_HEIGHT / height;
-          height = MAX_HEIGHT;
-        }
-      }
-
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('No se pudo obtener el contexto del canvas.');
-      ctx.drawImage(img, 0, 0, width, height);
-      
-      const blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
-
-      const storageRef = ref(storage, `genograms/${caseData.id}/genogram.jpg`);
-      await uploadBytes(storageRef, blob);
-      const downloadURL = await getDownloadURL(storageRef);
-
-      if (formData.genogramImage && formData.genogramImage.startsWith('https://firebasestorage.googleapis.com')) {
-        try {
-          const oldImageRef = ref(storage, formData.genogramImage);
-          await deleteObject(oldImageRef);
-        } catch (deleteError) {
-          console.warn("Could not delete old genogram image:", deleteError);
-        }
-      }
-      
-      setFormData(prev => ({ ...prev, genogramImage: downloadURL }));
-      setIsDirty(true);
-      setIsSaved(false);
-
-    } catch (error) {
-        console.error("Error processing image:", error);
-        const errorMessage = error instanceof Error ? error.message : 'Ocurrió un error inesperado.';
-        setErrors(prev => ({ ...prev, image: errorMessage }));
-    } finally {
-        setIsUploading(false);
-        if (genogramFileInputRef.current) {
-            genogramFileInputRef.current.value = "";
-        }
-    }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            
+            setFormData(prev => ({ ...prev, genogramImage: dataUrl }));
+            setIsDirty(true);
+            setIsSaved(false);
+        };
+        img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleRemoveGenogramImage = async () => {
-    if (!formData.genogramImage) return;
-
-    if (formData.genogramImage.startsWith('https://firebasestorage.googleapis.com')) {
-        setIsUploading(true);
-        try {
-            const imageRef = ref(storage, formData.genogramImage);
-            await deleteObject(imageRef);
-        } catch (error) {
-            console.error("Error deleting image from storage:", error);
-            setErrors(prev => ({...prev, image: 'Error al eliminar la imagen.'}));
-        } finally {
-            setIsUploading(false);
-        }
-    }
-
+  const handleRemoveGenogramImage = () => {
     setFormData(prev => ({...prev, genogramImage: ''}));
     setIsDirty(true);
     setIsSaved(false);
@@ -259,9 +191,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Validate email
     if (formData.email && !emailRegex.test(formData.email)) {
       setErrors({ email: 'El formato del correo electrónico no es válido.' });
-      return;
+      return; // Stop saving if invalid
     }
     
     setErrors({});
@@ -275,6 +208,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
     setTimeout(() => setIsSaved(false), 2500);
   };
   
+  // FIX: Refactored StatItem to accept a component type for the icon prop to resolve a TypeScript error with React.cloneElement.
   const StatItem: React.FC<{ icon: React.ComponentType<{ className?: string }>; label: string; value: string | number; }> = ({ icon: Icon, label, value }) => (
     <div className="flex items-center gap-4 p-4 bg-white rounded-lg shadow-sm border border-slate-200">
       <div className="text-teal-600 bg-teal-50 p-3 rounded-lg">
@@ -290,6 +224,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
   return (
     <div className="space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* FIX: Updated StatItem calls to pass the icon component directly, not as a JSX element. */}
             <StatItem icon={IoStatsChartOutline} label="Intervenciones" value={stats.totalInterventions} />
             <StatItem icon={IoCheckboxOutline} label="Tareas Pendientes" value={stats.pendingTasks} />
             <StatItem icon={IoCheckmarkDoneCircleOutline} label="Tareas Completadas" value={stats.completedTasks} />
@@ -378,37 +313,30 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
                     </div>
                 )}
             </div>
-            <div className="flex items-start gap-4">
-                <div className="flex items-center gap-4">
-                    <input
-                        ref={genogramFileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleGenogramImageChange}
-                        className="hidden"
-                        disabled={isUploading}
-                    />
+            <div className="flex items-center gap-4">
+                <input
+                    ref={genogramFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleGenogramImageChange}
+                    className="hidden"
+                />
+                <button
+                    type="button"
+                    onClick={() => genogramFileInputRef.current?.click()}
+                    className="px-4 py-2 text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 font-semibold flex items-center gap-2 transition-colors text-sm"
+                >
+                    {formData.genogramImage ? 'Cambiar Imagen' : 'Subir Imagen'}
+                </button>
+                {formData.genogramImage && (
                     <button
                         type="button"
-                        onClick={() => genogramFileInputRef.current?.click()}
-                        disabled={isUploading}
-                        className="px-4 py-2 text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 font-semibold flex items-center gap-2 transition-colors text-sm disabled:opacity-70 disabled:cursor-wait"
+                        onClick={handleRemoveGenogramImage}
+                        className="px-4 py-2 text-red-600 hover:bg-red-50 font-semibold flex items-center gap-2 rounded-lg transition-colors text-sm"
                     >
-                        {isUploading && <IoSyncOutline className="animate-spin" />}
-                        {isUploading ? 'Procesando...' : (formData.genogramImage ? 'Cambiar Imagen' : 'Subir Imagen')}
+                        Eliminar Imagen
                     </button>
-                    {formData.genogramImage && (
-                        <button
-                            type="button"
-                            onClick={handleRemoveGenogramImage}
-                            disabled={isUploading}
-                            className="px-4 py-2 text-red-600 hover:bg-red-50 font-semibold flex items-center gap-2 rounded-lg transition-colors text-sm disabled:opacity-70 disabled:cursor-wait"
-                        >
-                            Eliminar Imagen
-                        </button>
-                    )}
-                </div>
-                {errors.image && <p className="text-red-600 text-sm mt-2">{errors.image}</p>}
+                )}
             </div>
         </div>
 

@@ -172,6 +172,7 @@ export interface Case {
     isPinned?: boolean;
     orderIndex?: number;
     createdBy?: string;
+    genogramImage?: string; // URL to image in Firebase Storage
 }
 
 export type DashboardView = 'profile' | 'referral' | 'welcome' | 'tasks' | 'diagnosis' | 'planning' | 'accompaniment' | 'reports' | 'notebook' | 'professionals' | 'myNotes';
