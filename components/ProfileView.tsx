@@ -11,8 +11,6 @@ import {
     IoWarningOutline,
     IoSyncOutline
 } from 'react-icons/io5';
-import { storage } from '../services/firebase';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 interface ProfileViewProps {
   caseData: Case;
@@ -168,7 +166,16 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
     setIsUploading(true);
     setErrors(prev => ({ ...prev, image: undefined }));
 
+    // ATENCIÓN: Reemplaza estos valores con los de tu cuenta de Cloudinary.
+    // 1. Tu "Cloud Name" lo encuentras en el Dashboard.
+    // 2. Tu "Upload Preset" lo creas en Settings > Upload (debe ser de tipo "Unsigned").
+    const CLOUD_NAME = 'YOUR_CLOUD_NAME';
+    const UPLOAD_PRESET = 'YOUR_UPLOAD_PRESET';
+    const UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+
+
     try {
+      // 1. Procesar y redimensionar la imagen (lógica existente)
       const dataUrl = await readFileAsDataURL(file);
       const img = await loadImage(dataUrl);
 
@@ -189,7 +196,6 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
           height = MAX_HEIGHT;
         }
       }
-
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
@@ -198,26 +204,36 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
       
       const blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
 
-      const storageRef = ref(storage, `genograms/${caseData.id}/genogram.jpg`);
-      await uploadBytes(storageRef, blob);
-      const downloadURL = await getDownloadURL(storageRef);
+      // 2. Subir la imagen a Cloudinary
+      const cloudinaryFormData = new FormData();
+      cloudinaryFormData.append('file', blob);
+      cloudinaryFormData.append('upload_preset', UPLOAD_PRESET);
 
-      if (formData.genogramImage && formData.genogramImage.startsWith('https://firebasestorage.googleapis.com')) {
-        try {
-          const oldImageRef = ref(storage, formData.genogramImage);
-          await deleteObject(oldImageRef);
-        } catch (deleteError) {
-          console.warn("Could not delete old genogram image:", deleteError);
-        }
+      const response = await fetch(UPLOAD_URL, {
+        method: 'POST',
+        body: cloudinaryFormData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Error en Cloudinary: ${errorData.error.message}`);
+      }
+
+      const data = await response.json();
+      const downloadURL = data.secure_url;
+
+      if (!downloadURL) {
+          throw new Error('No se recibió una URL de Cloudinary tras la subida.');
       }
       
+      // 3. Actualizar el estado del componente
       setFormData(prev => ({ ...prev, genogramImage: downloadURL }));
       setIsDirty(true);
       setIsSaved(false);
 
-    } catch (error) {
-        console.error("Error processing image:", error);
-        const errorMessage = error instanceof Error ? error.message : 'Ocurrió un error inesperado.';
+    } catch (error: any) {
+        console.error("Error processing/uploading image:", error);
+        let errorMessage = error.message || 'Ocurrió un error inesperado al subir la imagen.';
         setErrors(prev => ({ ...prev, image: errorMessage }));
     } finally {
         setIsUploading(false);
@@ -227,22 +243,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
     }
   };
 
-  const handleRemoveGenogramImage = async () => {
+  const handleRemoveGenogramImage = () => {
     if (!formData.genogramImage) return;
-
-    if (formData.genogramImage.startsWith('https://firebasestorage.googleapis.com')) {
-        setIsUploading(true);
-        try {
-            const imageRef = ref(storage, formData.genogramImage);
-            await deleteObject(imageRef);
-        } catch (error) {
-            console.error("Error deleting image from storage:", error);
-            setErrors(prev => ({...prev, image: 'Error al eliminar la imagen.'}));
-        } finally {
-            setIsUploading(false);
-        }
-    }
-
+    
+    // Simplemente borra la URL del estado. La imagen permanecerá en Cloudinary.
+    // Puedes borrarla manualmente desde tu panel de Cloudinary si lo deseas.
     setFormData(prev => ({...prev, genogramImage: ''}));
     setIsDirty(true);
     setIsSaved(false);

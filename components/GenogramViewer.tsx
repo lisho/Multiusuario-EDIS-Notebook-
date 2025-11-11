@@ -45,14 +45,14 @@ const GenogramViewer: React.FC<GenogramViewerProps> = ({ imageUrl, onClose }) =>
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (scale <= 1) return;
+    if (scale <= 1 && e.target === containerRef.current) return;
     isPanningRef.current = true;
     lastMousePositionRef.current = { x: e.clientX, y: e.clientY };
     if (containerRef.current) containerRef.current.style.cursor = 'grabbing';
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isPanningRef.current || scale <= 1) return;
+    if (!isPanningRef.current) return;
     const dx = e.clientX - lastMousePositionRef.current.x;
     const dy = e.clientY - lastMousePositionRef.current.y;
 
@@ -65,7 +65,7 @@ const GenogramViewer: React.FC<GenogramViewerProps> = ({ imageUrl, onClose }) =>
 
   const stopPanning = () => {
     isPanningRef.current = false;
-    if (containerRef.current) containerRef.current.style.cursor = scale > 1 ? 'grab' : 'default';
+    if (containerRef.current) containerRef.current.style.cursor = 'grab';
   };
   
   const handleZoomIn = () => {
@@ -76,30 +76,22 @@ const GenogramViewer: React.FC<GenogramViewerProps> = ({ imageUrl, onClose }) =>
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-800 flex flex-col z-50 animate-fade-in" style={{ animation: 'fadeIn 0.3s ease-out' }}>
-        <style>{`
-            @keyframes fadeIn {
-                from { opacity: 0; }
-                to { opacity: 1; }
-            }
-        `}</style>
-        <header className="bg-slate-900/80 backdrop-blur-sm text-white h-16 flex justify-between items-center px-4 sm:px-6 flex-shrink-0">
-            <h2 className="text-lg sm:text-xl font-bold">Visor de Genograma</h2>
-            <button onClick={onClose} className="flex items-center gap-2 px-3 py-2 rounded-md bg-slate-700 hover:bg-slate-600 font-semibold transition-colors">
-                <IoCloseOutline className="text-xl sm:text-2xl" />
-                <span className="hidden sm:inline">Cerrar</span>
-            </button>
-        </header>
-
-        <main
+    <div 
+        className="fixed inset-0 bg-black/80 flex justify-center items-center z-[60] p-4"
+        onClick={onClose}
+        role="dialog"
+        aria-modal="true"
+    >
+        <div
             ref={containerRef}
-            className="flex-grow w-full h-full overflow-hidden relative"
+            className="relative w-full h-full overflow-hidden"
+            onClick={e => e.stopPropagation()}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={stopPanning}
             onMouseLeave={stopPanning}
             onWheel={handleWheel}
-            style={{ cursor: scale > 1 ? 'grab' : 'default' }}
+            style={{ cursor: 'grab' }}
         >
             <img 
                 src={imageUrl} 
@@ -108,16 +100,25 @@ const GenogramViewer: React.FC<GenogramViewerProps> = ({ imageUrl, onClose }) =>
                 style={{
                     transform: `translate(-50%, -50%) translate(${position.x}px, ${position.y}px) scale(${scale})`,
                     transition: isPanningRef.current ? 'none' : 'transform 0.1s ease-out',
-                    maxWidth: '95vw',
-                    maxHeight: 'calc(100vh - 4rem - 2rem)', // viewport height - header height - some margin
+                    maxWidth: '90vw',
+                    maxHeight: '90vh',
                 }}
             />
-        </main>
+        </div>
         
-        <div className="absolute bottom-4 right-4 bg-black/50 backdrop-blur-sm rounded-lg p-1 flex items-center gap-1 z-10">
-            <button onClick={handleZoomOut} className="text-white p-2 hover:bg-white/20 rounded-md" aria-label="Alejar"><IoRemoveCircleOutline className="text-2xl"/></button>
-            <button onClick={reset} className="text-white p-2 hover:bg-white/20 rounded-md" aria-label="Restaurar zoom"><IoRefreshOutline className="text-2xl"/></button>
-            <button onClick={handleZoomIn} className="text-white p-2 hover:bg-white/20 rounded-md" aria-label="Acercar"><IoAddCircleOutline className="text-2xl"/></button>
+        <div className="absolute top-4 right-4 flex items-center gap-2 z-[70]">
+            <div className="bg-black/50 backdrop-blur-sm rounded-lg p-1 flex items-center gap-1">
+                <button onClick={handleZoomOut} className="text-white p-2 hover:bg-white/20 rounded-md" aria-label="Alejar"><IoRemoveCircleOutline className="text-2xl"/></button>
+                <button onClick={reset} className="text-white p-2 hover:bg-white/20 rounded-md" aria-label="Restaurar zoom"><IoRefreshOutline className="text-2xl"/></button>
+                <button onClick={handleZoomIn} className="text-white p-2 hover:bg-white/20 rounded-md" aria-label="Acercar"><IoAddCircleOutline className="text-2xl"/></button>
+            </div>
+            <button 
+                onClick={onClose} 
+                className="text-white bg-black/50 backdrop-blur-sm p-2 rounded-lg hover:bg-white/20"
+                aria-label="Cerrar imagen"
+            >
+                <IoCloseOutline className="text-3xl" />
+            </button>
         </div>
     </div>
   );
