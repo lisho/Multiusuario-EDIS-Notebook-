@@ -45,7 +45,7 @@ const GenogramViewer: React.FC<GenogramViewerProps> = ({ imageUrl, onClose }) =>
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (scale <= 1 && e.target === containerRef.current) return;
+    if (scale <= 1) return;
     isPanningRef.current = true;
     lastMousePositionRef.current = { x: e.clientX, y: e.clientY };
     if (containerRef.current) containerRef.current.style.cursor = 'grabbing';
@@ -65,7 +65,7 @@ const GenogramViewer: React.FC<GenogramViewerProps> = ({ imageUrl, onClose }) =>
 
   const stopPanning = () => {
     isPanningRef.current = false;
-    if (containerRef.current) containerRef.current.style.cursor = 'grab';
+    if (containerRef.current) containerRef.current.style.cursor = scale > 1 ? 'grab' : 'default';
   };
   
   const handleZoomIn = () => {
@@ -91,7 +91,7 @@ const GenogramViewer: React.FC<GenogramViewerProps> = ({ imageUrl, onClose }) =>
             onMouseUp={stopPanning}
             onMouseLeave={stopPanning}
             onWheel={handleWheel}
-            style={{ cursor: 'grab' }}
+            style={{ cursor: scale > 1 ? 'grab' : 'default' }}
         >
             <img 
                 src={imageUrl} 
@@ -107,7 +107,7 @@ const GenogramViewer: React.FC<GenogramViewerProps> = ({ imageUrl, onClose }) =>
         </div>
         
         <div className="absolute top-4 right-4 flex items-center gap-2 z-[70]">
-            <div className="bg-black/50 backdrop-blur-sm rounded-lg p-1 flex items-center gap-1">
+            <div className="bg-black/50 backdrop-blur-sm rounded-lg p-1 flex items-center gap-1" onClick={e => e.stopPropagation()}>
                 <button onClick={handleZoomOut} className="text-white p-2 hover:bg-white/20 rounded-md" aria-label="Alejar"><IoRemoveCircleOutline className="text-2xl"/></button>
                 <button onClick={reset} className="text-white p-2 hover:bg-white/20 rounded-md" aria-label="Restaurar zoom"><IoRefreshOutline className="text-2xl"/></button>
                 <button onClick={handleZoomIn} className="text-white p-2 hover:bg-white/20 rounded-md" aria-label="Acercar"><IoAddCircleOutline className="text-2xl"/></button>

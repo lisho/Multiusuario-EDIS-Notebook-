@@ -53,7 +53,6 @@ interface CaseDashboardProps {
     onUpdateCase: (updatedCase: Case) => void;
     onUpdateTask: (caseId: string, updatedTask: Task) => void;
     onDeleteCase: (caseId: string) => void;
-    // FIX: Changed `assignedTo` type from `string` to `string[]` to match the implementation in `App.tsx` and `TasksView.tsx`.
     onAddTask: (caseId: string, taskText: string, assignedTo?: string[]) => void;
     onToggleTask: (caseId: string, taskId: string) => void;
     onDeleteTask: (caseId: string, taskId: string) => void;
@@ -73,12 +72,10 @@ interface CaseDashboardProps {
     currentUser: User;
     cases: Case[];
     onSelectCaseById: (caseId: string, view: DashboardView) => void;
-    // FIX: Added onOpenGenogramViewer to props to resolve the error in App.tsx
     onOpenGenogramViewer: (url: string) => void;
 }
 
 const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
-    // FIX: Destructured onOpenGenogramViewer from props
     const { caseData, onBack, onUpdateCase, onUpdateTask, onDeleteCase, adminTools, onSaveInterventionRecord, onDeleteInterventionRecord, onOpenTasks, isSidebarCollapsed, onToggleSidebar, requestConfirmation, taskToConvert, onConversionHandled, initialView, currentUser, cases, onSelectCaseById, onOpenGenogramViewer } = props;
     const [activeView, setActiveView] = useState<DashboardView>(initialView);
     const [diagnosisTab, setDiagnosisTab] = useState<DiagnosisTab>('relational');
@@ -210,8 +207,7 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
         const interventionRecords = caseData.interventionRecords || [];
         switch (activeView) {
             case 'profile':
-                // FIX: Passed onOpenGenogramViewer to ProfileView
-                return <ProfileView caseData={caseData} onUpdateCase={onUpdateCase} onDeleteCase={onDeleteCase} onOpenGenogramViewer={onOpenGenogramViewer} />;
+                return <ProfileView caseData={caseData} onUpdateCase={onUpdateCase} onDeleteCase={onDeleteCase} onOpenGenogramViewer={onOpenGenogramViewer} requestConfirmation={requestConfirmation} />;
             case 'referral':
                 return <InterventionMomentView 
                             moment={InterventionMoment.Referral}

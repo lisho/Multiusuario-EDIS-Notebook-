@@ -168,7 +168,6 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
             .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
     }, [allInterventions, caseMap, searchQuery, filterType, assignmentFilter, registrationFilter]);
 
-    // FIX: Explicitly typing the useMemo hook's return value fixes an inference issue where destructured variables were typed as 'unknown'.
     const { unassignedSelected, assignedSelected, canBeRegistered, canBeUnregistered } = useMemo<{
         unassignedSelected: Intervention[];
         assignedSelected: Intervention[];

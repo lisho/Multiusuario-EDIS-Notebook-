@@ -9,7 +9,8 @@ import {
     IoCheckmarkDoneCircleOutline,
     IoTimeOutline,
     IoWarningOutline,
-    IoSyncOutline
+    IoSyncOutline,
+    IoCheckmarkCircleOutline
 } from 'react-icons/io5';
 
 interface ProfileViewProps {
@@ -17,6 +18,7 @@ interface ProfileViewProps {
   onUpdateCase: (updatedCase: Case) => void;
   onDeleteCase: (caseId: string) => void;
   onOpenGenogramViewer: (url: string) => void;
+  requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
 }
 
 // Helper functions for linear async flow
@@ -64,7 +66,6 @@ const getCaseFormData = (caseData: Case) => ({
 const formInputStyle = (hasError: boolean) => `block w-full rounded-lg border shadow-sm focus:outline-none focus:ring-2 text-base px-4 py-3 bg-slate-100 text-slate-900 placeholder:text-slate-500 disabled:opacity-70 disabled:cursor-not-allowed ${hasError ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 focus:ring-teal-500'}`;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// InputField component is defined outside ProfileView to prevent re-creation on every render.
 const InputField: React.FC<{
     name: string;
     label: string;
@@ -107,14 +108,27 @@ const InputField: React.FC<{
     </div>
 );
 
+const StatItem: React.FC<{ icon: React.ComponentType<{ className?: string }>; label: string; value: string | number; }> = ({ icon: Icon, label, value }) => (
+    <div className="flex items-center gap-4 p-4 bg-white rounded-lg shadow-sm border border-slate-200">
+      <div className="text-teal-600 bg-teal-50 p-3 rounded-lg">
+          <Icon className="w-6 h-6" />
+      </div>
+      <div>
+          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className="text-2xl font-bold text-slate-800">{value}</p>
+      </div>
+    </div>
+  );
 
-const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDeleteCase, onOpenGenogramViewer }) => {
+const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDeleteCase, onOpenGenogramViewer, requestConfirmation }) => {
   const [formData, setFormData] = useState(getCaseFormData(caseData));
-  const [errors, setErrors] = useState<{ email?: string; image?: string }>({});
+  const [errors, setErrors] = useState<{ email?: string }>({});
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [imageSaveSuccess, setImageSaveSuccess] = useState(false);
   const genogramFileInputRef = useRef<HTMLInputElement>(null);
   const prevCaseIdRef = useRef<string | undefined>(undefined);
   
@@ -144,6 +158,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
         setIsDirty(false);
         setIsSaving(false);
         setIsSaved(false);
+    } else {
+        setFormData(currentData => ({
+            ...currentData,
+            genogramImage: caseData.genogramImage || '',
+        }));
     }
     prevCaseIdRef.current = caseData.id;
   }, [caseData]);
@@ -164,18 +183,29 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
     if (!file) return;
 
     setIsUploading(true);
-    setErrors(prev => ({ ...prev, image: undefined }));
+    setImageError(null);
+    setImageSaveSuccess(false);
 
-    // ATENCIÓN: Reemplaza estos valores con los de tu cuenta de Cloudinary.
-    // 1. Tu "Cloud Name" lo encuentras en el Dashboard.
-    // 2. Tu "Upload Preset" lo creas en Settings > Upload (debe ser de tipo "Unsigned").
-    const CLOUD_NAME = 'YOUR_CLOUD_NAME';
-    const UPLOAD_PRESET = 'YOUR_UPLOAD_PRESET';
+    const CLOUD_NAME = 'ddt1k4iwf';
+    const UPLOAD_PRESET = 'field_notebook_uploads';
+    const FOLDER_NAME = 'genogramas';
     const UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+    
+    // Delete old image before uploading a new one
+    if (caseData.genogramImage && caseData.genogramImageDeleteToken) {
+        const DELETE_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/delete_by_token`;
+        const deleteFormData = new FormData();
+        deleteFormData.append('token', caseData.genogramImageDeleteToken);
+        try {
+            await fetch(DELETE_URL, { method: 'POST', body: deleteFormData });
+            // We don't need to check the response, just attempt to delete.
+        } catch (error) {
+            console.error("Failed to delete previous genogram from Cloudinary:", error);
+        }
+    }
 
 
     try {
-      // 1. Procesar y redimensionar la imagen (lógica existente)
       const dataUrl = await readFileAsDataURL(file);
       const img = await loadImage(dataUrl);
 
@@ -204,10 +234,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
       
       const blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
 
-      // 2. Subir la imagen a Cloudinary
       const cloudinaryFormData = new FormData();
       cloudinaryFormData.append('file', blob);
       cloudinaryFormData.append('upload_preset', UPLOAD_PRESET);
+      cloudinaryFormData.append('folder', FOLDER_NAME);
+      cloudinaryFormData.append('return_delete_token', 'true'); // Request delete token
 
       const response = await fetch(UPLOAD_URL, {
         method: 'POST',
@@ -221,20 +252,19 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
 
       const data = await response.json();
       const downloadURL = data.secure_url;
+      const deleteToken = data.delete_token;
 
       if (!downloadURL) {
           throw new Error('No se recibió una URL de Cloudinary tras la subida.');
       }
       
-      // 3. Actualizar el estado del componente
-      setFormData(prev => ({ ...prev, genogramImage: downloadURL }));
-      setIsDirty(true);
-      setIsSaved(false);
+      await onUpdateCase({ ...caseData, genogramImage: downloadURL, genogramImageDeleteToken: deleteToken || '' });
+      setImageSaveSuccess(true);
+      setTimeout(() => setImageSaveSuccess(false), 3000);
 
     } catch (error: any) {
         console.error("Error processing/uploading image:", error);
-        let errorMessage = error.message || 'Ocurrió un error inesperado al subir la imagen.';
-        setErrors(prev => ({ ...prev, image: errorMessage }));
+        setImageError(error.message || 'Ocurrió un error inesperado al subir la imagen.');
     } finally {
         setIsUploading(false);
         if (genogramFileInputRef.current) {
@@ -244,20 +274,52 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
   };
 
   const handleRemoveGenogramImage = () => {
-    if (!formData.genogramImage) return;
-    
-    // Simplemente borra la URL del estado. La imagen permanecerá en Cloudinary.
-    // Puedes borrarla manualmente desde tu panel de Cloudinary si lo deseas.
-    setFormData(prev => ({...prev, genogramImage: ''}));
-    setIsDirty(true);
-    setIsSaved(false);
-    if(genogramFileInputRef.current) {
-        genogramFileInputRef.current.value = "";
-    }
+    requestConfirmation(
+        'Eliminar Imagen del Genograma',
+        '¿Estás seguro de que quieres eliminar la imagen? Esta acción la borrará permanentemente del servidor y no se puede deshacer.',
+        async () => {
+            setImageError(null);
+            setImageSaveSuccess(false);
+
+            if (caseData.genogramImage && caseData.genogramImageDeleteToken) {
+                const CLOUD_NAME = 'ddt1k4iwf';
+                const DELETE_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/delete_by_token`;
+                const deleteFormData = new FormData();
+                deleteFormData.append('token', caseData.genogramImageDeleteToken);
+                
+                try {
+                    const response = await fetch(DELETE_URL, {
+                        method: 'POST',
+                        body: deleteFormData,
+                    });
+                    const data = await response.json();
+                    if (data.result !== 'ok') {
+                        // Log it, but don't block the UI update.
+                        console.warn("Cloudinary deletion failed, but proceeding with DB update.", data);
+                    }
+                } catch (error) {
+                    // Also log but don't block. The user wants the reference gone from the app.
+                    console.error("Error deleting from Cloudinary:", error);
+                }
+            }
+
+            try {
+                await onUpdateCase({ ...caseData, genogramImage: '', genogramImageDeleteToken: '' });
+                setImageSaveSuccess(true);
+                setTimeout(() => setImageSaveSuccess(false), 3000);
+            } catch (error) {
+                setImageError('No se pudo eliminar la referencia de la imagen.');
+            }
+            if (genogramFileInputRef.current) {
+                genogramFileInputRef.current.value = "";
+            }
+        }
+    );
   };
   
   const handleReset = () => {
-      setFormData(getCaseFormData(caseData));
+      const { genogramImage, ...textFields } = getCaseFormData(caseData);
+      setFormData(prev => ({ ...textFields, genogramImage: prev.genogramImage }));
       setErrors({});
       setIsDirty(false);
   };
@@ -272,7 +334,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
     setErrors({});
     setIsSaving(true);
     
-    await onUpdateCase({ ...caseData, ...formData });
+    const { genogramImage, ...textFormData } = formData;
+    await onUpdateCase({ ...caseData, ...textFormData });
 
     setIsSaving(false);
     setIsDirty(false);
@@ -280,17 +343,6 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
     setTimeout(() => setIsSaved(false), 2500);
   };
   
-  const StatItem: React.FC<{ icon: React.ComponentType<{ className?: string }>; label: string; value: string | number; }> = ({ icon: Icon, label, value }) => (
-    <div className="flex items-center gap-4 p-4 bg-white rounded-lg shadow-sm border border-slate-200">
-      <div className="text-teal-600 bg-teal-50 p-3 rounded-lg">
-          <Icon className="w-6 h-6" />
-      </div>
-      <div>
-          <p className="text-sm font-medium text-slate-500">{label}</p>
-          <p className="text-2xl font-bold text-slate-800">{value}</p>
-      </div>
-    </div>
-  );
 
   return (
     <div className="space-y-6">
@@ -383,7 +435,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
                     </div>
                 )}
             </div>
-            <div className="flex items-start gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 <div className="flex items-center gap-4">
                     <input
                         ref={genogramFileInputRef}
@@ -400,20 +452,23 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
                         className="px-4 py-2 text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 font-semibold flex items-center gap-2 transition-colors text-sm disabled:opacity-70 disabled:cursor-wait"
                     >
                         {isUploading && <IoSyncOutline className="animate-spin" />}
-                        {isUploading ? 'Procesando...' : (formData.genogramImage ? 'Cambiar Imagen' : 'Subir Imagen')}
+                        {isUploading ? 'Subiendo...' : (formData.genogramImage ? 'Cambiar Imagen' : 'Subir Imagen')}
                     </button>
                     {formData.genogramImage && (
                         <button
                             type="button"
                             onClick={handleRemoveGenogramImage}
                             disabled={isUploading}
-                            className="px-4 py-2 text-red-600 hover:bg-red-50 font-semibold flex items-center gap-2 rounded-lg transition-colors text-sm disabled:opacity-70 disabled:cursor-wait"
+                            className="px-4 py-2 text-red-600 hover:bg-red-50 font-semibold flex items-center gap-2 rounded-lg transition-colors text-sm disabled:opacity-70"
                         >
                             Eliminar Imagen
                         </button>
                     )}
                 </div>
-                {errors.image && <p className="text-red-600 text-sm mt-2">{errors.image}</p>}
+                <div className="flex-grow">
+                    {imageError && <p className="text-red-600 text-sm flex items-center gap-1.5"><IoWarningOutline/> {imageError}</p>}
+                    {imageSaveSuccess && <p className="text-green-600 text-sm font-medium flex items-center gap-1.5"><IoCheckmarkCircleOutline/> Imagen guardada correctamente.</p>}
+                </div>
             </div>
         </div>
 
