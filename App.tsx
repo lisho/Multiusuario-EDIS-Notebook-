@@ -330,8 +330,11 @@ const App: React.FC = () => {
         const isMinorUpdate = Object.keys(caseToUpdate).every(key => ['isPinned', 'orderIndex'].includes(key));
         const finalCaseData = { ...caseToUpdate, lastUpdate: isMinorUpdate ? updatedCase.lastUpdate : new Date().toISOString() };
     
+        // Sanitize the data to remove any fields with `undefined` values, which Firestore doesn't support.
+        const sanitizedData = Object.fromEntries(Object.entries(finalCaseData).filter(([_, v]) => v !== undefined));
+
         try {
-            await updateDoc(caseRef, finalCaseData);
+            await updateDoc(caseRef, sanitizedData);
             
             const fullyUpdatedCaseWithTimestamp = { ...updatedCase, lastUpdate: finalCaseData.lastUpdate };
     
@@ -986,7 +989,9 @@ const App: React.FC = () => {
         const { id, ...caseToUpdate } = updatedCaseForDb;
         const finalCaseDataForDb = { ...caseToUpdate, lastUpdate: updatedCaseForDb.lastUpdate }; // Keep original lastUpdate
     
-        updateDoc(caseRef, finalCaseDataForDb).catch(error => {
+        const sanitizedDataForDb = Object.fromEntries(Object.entries(finalCaseDataForDb).filter(([_, v]) => v !== undefined));
+
+        updateDoc(caseRef, sanitizedDataForDb).catch(error => {
             console.error("Error persisting drag-and-drop update:", error);
             // Optional: Revert state if DB update fails by fetching data again or rolling back the change
             setCases(cases); // Simple rollback

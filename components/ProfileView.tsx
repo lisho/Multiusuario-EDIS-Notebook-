@@ -12,6 +12,7 @@ import {
     IoSyncOutline,
     IoCheckmarkCircleOutline
 } from 'react-icons/io5';
+import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from '../config/cloudinary';
 
 interface ProfileViewProps {
   caseData: Case;
@@ -21,38 +22,6 @@ interface ProfileViewProps {
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
 }
 
-// Helper functions for linear async flow
-const readFileAsDataURL = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = (error) => reject(new Error('Error al leer el archivo.'));
-        reader.readAsDataURL(file);
-    });
-};
-
-const loadImage = (dataUrl: string): Promise<HTMLImageElement> => {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error('El archivo seleccionado no es una imagen válida.'));
-        img.src = dataUrl;
-    });
-};
-
-const canvasToBlob = (canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-        canvas.toBlob((blob) => {
-            if (blob) {
-                resolve(blob);
-            } else {
-                reject(new Error('No se pudo convertir la imagen procesada.'));
-            }
-        }, type, quality);
-    });
-};
-
-
 const getCaseFormData = (caseData: Case) => ({
     nickname: caseData.nickname || '',
     dni: caseData.dni || '',
@@ -60,7 +29,6 @@ const getCaseFormData = (caseData: Case) => ({
     email: caseData.email || '',
     address: caseData.address || '',
     profileNotes: caseData.profileNotes || '',
-    genogramImage: caseData.genogramImage || '',
 });
 
 const formInputStyle = (hasError: boolean) => `block w-full rounded-lg border shadow-sm focus:outline-none focus:ring-2 text-base px-4 py-3 bg-slate-100 text-slate-900 placeholder:text-slate-500 disabled:opacity-70 disabled:cursor-not-allowed ${hasError ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 focus:ring-teal-500'}`;
@@ -159,10 +127,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
         setIsSaving(false);
         setIsSaved(false);
     } else {
-        setFormData(currentData => ({
-            ...currentData,
-            genogramImage: caseData.genogramImage || '',
-        }));
+        // If caseData updates from parent (e.g., after an image upload),
+        // sync the form state but preserve dirtiness.
+        setFormData(getCaseFormData(caseData));
     }
     prevCaseIdRef.current = caseData.id;
   }, [caseData]);
@@ -177,6 +144,23 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
       setErrors(prev => ({ ...prev, email: undefined }));
     }
   };
+  
+  const deleteFromCloudinary = async (deleteToken: string) => {
+    const formData = new FormData();
+    formData.append('token', deleteToken);
+    try {
+        const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/delete_by_token`, {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await response.json();
+        if (data.result !== 'ok') {
+            console.warn('Cloudinary deletion failed:', data);
+        }
+    } catch (error) {
+        console.error('Error deleting image from Cloudinary:', error);
+    }
+  };
 
   const handleGenogramImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -186,140 +170,84 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
     setImageError(null);
     setImageSaveSuccess(false);
 
-    const CLOUD_NAME = 'ddt1k4iwf';
-    const UPLOAD_PRESET = 'field_notebook_uploads';
-    const FOLDER_NAME = 'genogramas';
-    const UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
-    
-    // Delete old image before uploading a new one
-    if (caseData.genogramImage && caseData.genogramImageDeleteToken) {
-        const DELETE_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/delete_by_token`;
-        const deleteFormData = new FormData();
-        deleteFormData.append('token', caseData.genogramImageDeleteToken);
-        try {
-            await fetch(DELETE_URL, { method: 'POST', body: deleteFormData });
-            // We don't need to check the response, just attempt to delete.
-        } catch (error) {
-            console.error("Failed to delete previous genogram from Cloudinary:", error);
-        }
-    }
-
-
     try {
-      const dataUrl = await readFileAsDataURL(file);
-      const img = await loadImage(dataUrl);
-
-      const canvas = document.createElement('canvas');
-      const MAX_WIDTH = 1280;
-      const MAX_HEIGHT = 1280;
-      let width = img.width;
-      let height = img.height;
-
-      if (width > height) {
-        if (width > MAX_WIDTH) {
-          height *= MAX_WIDTH / width;
-          width = MAX_WIDTH;
-        }
-      } else {
-        if (height > MAX_HEIGHT) {
-          width *= MAX_HEIGHT / height;
-          height = MAX_HEIGHT;
-        }
+      if (caseData.genogramImageDeleteToken) {
+        await deleteFromCloudinary(caseData.genogramImageDeleteToken);
       }
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('No se pudo obtener el contexto del canvas.');
-      ctx.drawImage(img, 0, 0, width, height);
-      
-      const blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
 
-      const cloudinaryFormData = new FormData();
-      cloudinaryFormData.append('file', blob);
-      cloudinaryFormData.append('upload_preset', UPLOAD_PRESET);
-      cloudinaryFormData.append('folder', FOLDER_NAME);
-      cloudinaryFormData.append('return_delete_token', 'true'); // Request delete token
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', file);
+      uploadFormData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
 
-      const response = await fetch(UPLOAD_URL, {
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
         method: 'POST',
-        body: cloudinaryFormData,
+        body: uploadFormData,
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(`Error en Cloudinary: ${errorData.error.message}`);
-      }
-
-      const data = await response.json();
-      const downloadURL = data.secure_url;
-      const deleteToken = data.delete_token;
-
-      if (!downloadURL) {
-          throw new Error('No se recibió una URL de Cloudinary tras la subida.');
+        throw new Error(errorData.error.message || 'La subida de la imagen falló.');
       }
       
-      await onUpdateCase({ ...caseData, genogramImage: downloadURL, genogramImageDeleteToken: deleteToken || '' });
+      const data = await response.json();
+      
+      const updatedCaseData: Case = {
+        ...caseData,
+        genogramImage: data.secure_url,
+        genogramImageDeleteToken: data.delete_token,
+      };
+
+      await onUpdateCase(updatedCaseData);
+      
       setImageSaveSuccess(true);
       setTimeout(() => setImageSaveSuccess(false), 3000);
 
     } catch (error: any) {
-        console.error("Error processing/uploading image:", error);
-        setImageError(error.message || 'Ocurrió un error inesperado al subir la imagen.');
+      console.error("Error uploading to Cloudinary:", error);
+      setImageError(error.message);
     } finally {
-        setIsUploading(false);
-        if (genogramFileInputRef.current) {
-            genogramFileInputRef.current.value = "";
-        }
+      setIsUploading(false);
+      if (genogramFileInputRef.current) {
+        genogramFileInputRef.current.value = "";
+      }
     }
   };
 
   const handleRemoveGenogramImage = () => {
     requestConfirmation(
-        'Eliminar Imagen del Genograma',
-        '¿Estás seguro de que quieres eliminar la imagen? Esta acción la borrará permanentemente del servidor y no se puede deshacer.',
-        async () => {
-            setImageError(null);
-            setImageSaveSuccess(false);
+      'Eliminar Imagen del Genograma',
+      '¿Estás seguro de que quieres eliminar la imagen? Esta acción la borrará permanentemente del servidor y no se puede deshacer.',
+      async () => {
+        if (!caseData.genogramImageDeleteToken) return;
+        
+        setImageError(null);
+        setImageSaveSuccess(false);
+        setIsUploading(true); // Use 'isUploading' state to show loading feedback
 
-            if (caseData.genogramImage && caseData.genogramImageDeleteToken) {
-                const CLOUD_NAME = 'ddt1k4iwf';
-                const DELETE_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/delete_by_token`;
-                const deleteFormData = new FormData();
-                deleteFormData.append('token', caseData.genogramImageDeleteToken);
-                
-                try {
-                    const response = await fetch(DELETE_URL, {
-                        method: 'POST',
-                        body: deleteFormData,
-                    });
-                    const data = await response.json();
-                    if (data.result !== 'ok') {
-                        // Log it, but don't block the UI update.
-                        console.warn("Cloudinary deletion failed, but proceeding with DB update.", data);
-                    }
-                } catch (error) {
-                    // Also log but don't block. The user wants the reference gone from the app.
-                    console.error("Error deleting from Cloudinary:", error);
-                }
-            }
+        try {
+          await deleteFromCloudinary(caseData.genogramImageDeleteToken);
+          
+          const updatedCaseData: Case = {
+            ...caseData,
+            genogramImage: '',
+            genogramImageDeleteToken: '',
+          };
 
-            try {
-                await onUpdateCase({ ...caseData, genogramImage: '', genogramImageDeleteToken: '' });
-                setImageSaveSuccess(true);
-                setTimeout(() => setImageSaveSuccess(false), 3000);
-            } catch (error) {
-                setImageError('No se pudo eliminar la referencia de la imagen.');
-            }
-            if (genogramFileInputRef.current) {
-                genogramFileInputRef.current.value = "";
-            }
+          await onUpdateCase(updatedCaseData);
+          setImageSaveSuccess(true);
+          setTimeout(() => setImageSaveSuccess(false), 3000);
+        } catch (error) {
+          console.error("Error during image deletion from Cloudinary:", error);
+          setImageError('No se pudo completar la eliminación del servidor.');
+        } finally {
+            setIsUploading(false);
         }
+      }
     );
   };
   
   const handleReset = () => {
-      const { genogramImage, ...textFields } = getCaseFormData(caseData);
-      setFormData(prev => ({ ...textFields, genogramImage: prev.genogramImage }));
+      setFormData(getCaseFormData(caseData));
       setErrors({});
       setIsDirty(false);
   };
@@ -334,8 +262,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
     setErrors({});
     setIsSaving(true);
     
-    const { genogramImage, ...textFormData } = formData;
-    await onUpdateCase({ ...caseData, ...textFormData });
+    const { genogramImage, genogramImageDeleteToken, ...formDataToSave } = caseData;
+    const caseToUpdate = { ...caseData, ...formData };
+    
+    await onUpdateCase(caseToUpdate);
 
     setIsSaving(false);
     setIsDirty(false);
@@ -411,15 +341,15 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
         <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 space-y-4">
             <h3 className="text-lg font-bold text-slate-800">Genograma Familiar</h3>
             <div className="mt-2 border-t border-slate-200 pt-4">
-                {formData.genogramImage ? (
+                {caseData.genogramImage ? (
                     <div className="space-y-4">
                         <p className="text-sm text-slate-600">Haz clic en la imagen para abrir el visor de página completa.</p>
                         <div 
                             className="relative group cursor-pointer border-2 border-dashed border-slate-300 rounded-lg p-2"
-                            onClick={() => onOpenGenogramViewer(formData.genogramImage!)}
+                            onClick={() => onOpenGenogramViewer(caseData.genogramImage!)}
                         >
                             <img 
-                                src={formData.genogramImage} 
+                                src={caseData.genogramImage} 
                                 alt="Genograma familiar" 
                                 className="w-full h-auto max-h-96 object-contain rounded-md"
                             />
@@ -452,9 +382,9 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
                         className="px-4 py-2 text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 font-semibold flex items-center gap-2 transition-colors text-sm disabled:opacity-70 disabled:cursor-wait"
                     >
                         {isUploading && <IoSyncOutline className="animate-spin" />}
-                        {isUploading ? 'Subiendo...' : (formData.genogramImage ? 'Cambiar Imagen' : 'Subir Imagen')}
+                        {isUploading ? 'Subiendo...' : (caseData.genogramImage ? 'Cambiar Imagen' : 'Subir Imagen')}
                     </button>
-                    {formData.genogramImage && (
+                    {caseData.genogramImage && (
                         <button
                             type="button"
                             onClick={handleRemoveGenogramImage}

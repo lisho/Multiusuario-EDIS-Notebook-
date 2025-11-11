@@ -173,7 +173,7 @@ export interface Case {
     orderIndex?: number;
     createdBy?: string;
     genogramImage?: string; // URL to image in Cloudinary
-    genogramImageDeleteToken?: string; // Token to delete image from Cloudinary
+    genogramImageDeleteToken?: string; // Token for deleting image from Cloudinary
 }
 
 export type DashboardView = 'profile' | 'referral' | 'welcome' | 'tasks' | 'diagnosis' | 'planning' | 'accompaniment' | 'reports' | 'notebook' | 'professionals' | 'myNotes';
