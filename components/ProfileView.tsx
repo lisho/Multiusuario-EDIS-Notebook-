@@ -229,8 +229,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
           
           const updatedCaseData: Case = {
             ...caseData,
-            genogramImage: '',
-            genogramImageDeleteToken: '',
+            genogramImage: undefined,
+            genogramImageDeleteToken: undefined,
           };
 
           await onUpdateCase(updatedCaseData);
@@ -262,7 +262,6 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
     setErrors({});
     setIsSaving(true);
     
-    const { genogramImage, genogramImageDeleteToken, ...formDataToSave } = caseData;
     const caseToUpdate = { ...caseData, ...formData };
     
     await onUpdateCase(caseToUpdate);
