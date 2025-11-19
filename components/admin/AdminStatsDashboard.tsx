@@ -187,11 +187,9 @@ const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, profes
             .sort((a, b) => b.value - a.value);
 
         const availableYears = Array.from(new Set(allInterventions
-            .map(i => new Date(i.start).getFullYear().toString())
-            .filter(year => parseInt(year) >= 2020)
-        // FIX: Explicitly type the parameters of the sort function to avoid potential type inference issues.
-        // Also, parse strings to numbers before subtraction to fix arithmetic error.
-        )).sort((a: string, b: string) => parseInt(b) - parseInt(a));
+            .map(i => new Date(i.start).getFullYear())
+            .filter(year => year >= 2020)
+        )).sort((a, b) => b - a).map(String);
         
         const filteredInterventionsByYear = selectedYear === 'all'
             ? allInterventions

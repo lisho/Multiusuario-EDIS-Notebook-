@@ -54,7 +54,7 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
         return Array.from(types).sort((a: string, b: string) => a.localeCompare(b));
     }, [allInterventions]);
     
-    const inconsistentInterventionsGrouped = useMemo(() => {
+    const inconsistentInterventionsGrouped = useMemo<Record<string, Intervention[]>>(() => {
         const validTypes = new Set(Object.values(InterventionType));
         const inconsistent = allInterventions.filter(i => !validTypes.has(i.interventionType) && (i.interventionType as string) !== 'Tarea');
         
@@ -310,8 +310,8 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
         if (!newType) return;
 
         const interventionsToUpdate = inconsistentInterventionsGrouped[invalidType];
-        // FIX: Add a guard to ensure interventionsToUpdate is defined before accessing .length, resolving a type error where it could be 'unknown'.
-        if (!Array.isArray(interventionsToUpdate)) {
+        
+        if (!interventionsToUpdate) {
             return;
         }
         requestConfirmation(

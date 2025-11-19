@@ -53,6 +53,120 @@ const isDateInRange = (date: Date, start: Date, end: Date) => {
     return checkDate >= startDate && checkDate <= endDate;
 };
 
+// Helper interface for positioning
+interface PositionedEvent {
+    event: Intervention;
+    style: {
+        top: number; // pixels
+        height: number; // pixels
+        left: number; // percentage
+        width: number; // percentage
+    };
+}
+
+const calculateEventPositions = (events: Intervention[]): PositionedEvent[] => {
+    if (events.length === 0) return [];
+
+    // 1. Sort events by start time, then by duration (longer first)
+    const sortedEvents = [...events].sort((a, b) => {
+        const startA = new Date(a.start).getTime();
+        const startB = new Date(b.start).getTime();
+        if (startA !== startB) return startA - startB;
+        const durationA = new Date(a.end).getTime() - startA;
+        const durationB = new Date(b.end).getTime() - startB;
+        return durationB - durationA;
+    });
+
+    // 2. Group overlapping events into clusters
+    const clusters: Intervention[][] = [];
+    let currentCluster: Intervention[] = [];
+    let clusterEnd = 0;
+
+    sortedEvents.forEach(event => {
+        const start = new Date(event.start).getTime();
+        const end = new Date(event.end).getTime();
+
+        if (currentCluster.length === 0) {
+            currentCluster.push(event);
+            clusterEnd = end;
+        } else {
+            if (start < clusterEnd) {
+                // Overlap: add to current cluster
+                currentCluster.push(event);
+                clusterEnd = Math.max(clusterEnd, end);
+            } else {
+                // No overlap: seal current cluster and start new one
+                clusters.push(currentCluster);
+                currentCluster = [event];
+                clusterEnd = end;
+            }
+        }
+    });
+    if (currentCluster.length > 0) clusters.push(currentCluster);
+
+    // 3. Assign columns within each cluster and calculate positions
+    const positionedEvents: PositionedEvent[] = [];
+
+    clusters.forEach(cluster => {
+        const columns: Intervention[][] = []; // Array of columns, each containing non-overlapping events
+
+        cluster.forEach(event => {
+            let placed = false;
+            // Try to place event in an existing column
+            for (let i = 0; i < columns.length; i++) {
+                const lastEventInColumn = columns[i][columns[i].length - 1];
+                if (new Date(event.start).getTime() >= new Date(lastEventInColumn.end).getTime()) {
+                    columns[i].push(event);
+                    // Store column index temporarily on the event object wrapper logic below
+                    (event as any)._colIndex = i; 
+                    placed = true;
+                    break;
+                }
+            }
+            
+            if (!placed) {
+                // Create new column
+                columns.push([event]);
+                (event as any)._colIndex = columns.length - 1;
+            }
+        });
+
+        const totalColumns = columns.length;
+        const widthPercent = 100 / totalColumns;
+
+        cluster.forEach(event => {
+            const start = new Date(event.start);
+            const end = new Date(event.end);
+            
+            // Calculate vertical position
+            const startMinutes = start.getHours() * 60 + start.getMinutes();
+            const endMinutes = end.getHours() * 60 + end.getMinutes();
+
+            // Filter out events completely outside view range (though they shouldn't be here based on parent logic)
+            if (start.getHours() >= END_HOUR || end.getHours() < START_HOUR) return;
+
+            const top = ((startMinutes - START_HOUR * 60) / 60) * HOUR_HEIGHT;
+            const durationMinutes = Math.max(15, endMinutes - startMinutes); // Min duration visual 15m
+            const height = (durationMinutes / 60) * HOUR_HEIGHT;
+            
+            const colIndex = (event as any)._colIndex;
+
+            positionedEvents.push({
+                event,
+                style: {
+                    top,
+                    height: height - 2, // margin for border
+                    left: colIndex * widthPercent,
+                    width: widthPercent
+                }
+            });
+        });
+    });
+
+    return positionedEvents;
+};
+
+
 const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions, onSaveIntervention, onDeleteIntervention, onSelectCaseById, requestConfirmation, currentUser }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view, setView] = useState<CalendarViewType>('week');
@@ -158,7 +272,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         return (
             <div
                 style={{ ...style, borderLeft: `4px solid ${style.borderLeftColor}` }}
-                className="text-xs p-1.5 rounded-sm overflow-hidden h-full flex flex-col cursor-pointer"
+                className="text-xs p-1.5 rounded-sm overflow-hidden h-full flex flex-col cursor-pointer hover:brightness-95 transition-all shadow-sm"
                 onClick={(e) => { e.stopPropagation(); handleOpenModal(event, undefined); }}
             >
                 <div className="font-semibold truncate">
@@ -271,7 +385,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                             {cloneDay.getDate()}
                         </span>
                         <div className={`mt-1 space-y-1 ${!isCurrentMonth ? 'opacity-60' : ''}`}>
-                            {dayEvents.map(event => <EventItem key={event.id} event={event} />)}
+                            {dayEvents.slice(0, 4).map(event => <EventItem key={event.id} event={event} />)}
+                            {dayEvents.length > 4 && <p className="text-xs text-slate-400 font-medium text-center">+ {dayEvents.length - 4} más</p>}
                         </div>
                     </div>
                 );
@@ -299,7 +414,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         });
 
         const allDayEventsByDay = weekDays.map(day => getEventsForDay(day).filter(e => e.isAllDay));
-        const timedEventsByDay = weekDays.map(day => getEventsForDay(day).filter(e => !e.isAllDay));
+        const timedEventsPositionsByDay = weekDays.map(day => {
+             const rawEvents = getEventsForDay(day).filter(e => !e.isAllDay);
+             return calculateEventPositions(rawEvents);
+        });
     
         const timeColumn = (
             <div className="w-16 flex-shrink-0 text-right pr-2">
@@ -324,26 +442,23 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     
                 {/* Events */}
                 <div className="absolute top-0 left-0 right-0 bottom-0 grid grid-cols-7">
-                    {timedEventsByDay.map((events, dayIndex) => (
+                    {timedEventsPositionsByDay.map((positionedEvents, dayIndex) => (
                         <div key={dayIndex} className="relative border-l border-slate-200">
-                            {events.map(event => {
-                                const start = new Date(event.start);
-                                const end = new Date(event.end);
-                                const startMinutes = start.getHours() * 60 + start.getMinutes();
-                                const endMinutes = end.getHours() * 60 + end.getMinutes();
-                                
-                                if (start.getHours() >= END_HOUR || end.getHours() < START_HOUR) return null;
-                                
-                                const top = ((startMinutes - START_HOUR * 60) / 60) * HOUR_HEIGHT;
-                                const duration = Math.max(15, endMinutes - startMinutes);
-                                const height = (duration / 60) * HOUR_HEIGHT;
-                                
-                                return (
-                                    <div key={event.id} className="absolute left-1 right-1 z-10" style={{ top: `${top}px`, height: `${height - 2}px` }}>
-                                        <TimedEventItem event={event} />
-                                    </div>
-                                );
-                            })}
+                            {positionedEvents.map(({event, style}) => (
+                                <div 
+                                    key={event.id} 
+                                    className="absolute z-10" 
+                                    style={{ 
+                                        top: `${style.top}px`, 
+                                        height: `${style.height}px`,
+                                        left: `${style.left}%`,
+                                        width: `${style.width}%`,
+                                        paddingRight: '2px' // small visual gap
+                                    }}
+                                >
+                                    <TimedEventItem event={event} />
+                                </div>
+                            ))}
                         </div>
                     ))}
                 </div>
@@ -399,8 +514,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
 
     const renderDayView = () => {
         const dayEvents = getEventsForDay(currentDate);
-        const timedEvents = dayEvents.filter(e => !e.isAllDay);
         const allDayEvents = dayEvents.filter(e => e.isAllDay);
+        
+        const rawTimedEvents = dayEvents.filter(e => !e.isAllDay);
+        const positionedEvents = calculateEventPositions(rawTimedEvents);
     
         const timeColumn = (
             <div className="w-16 flex-shrink-0 text-right pr-2">
@@ -425,24 +542,21 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 
                 {/* Timed Events */}
                 <div className="absolute top-0 left-0 right-0 bottom-0">
-                    {timedEvents.map(event => {
-                        const start = new Date(event.start);
-                        const end = new Date(event.end);
-                        const startMinutes = start.getHours() * 60 + start.getMinutes();
-                        const endMinutes = end.getHours() * 60 + end.getMinutes();
-                        
-                        if (start.getHours() >= END_HOUR || end.getHours() < START_HOUR) return null;
-                        
-                        const top = ((startMinutes - START_HOUR * 60) / 60) * HOUR_HEIGHT;
-                        const duration = Math.max(15, endMinutes - startMinutes);
-                        const height = (duration / 60) * HOUR_HEIGHT;
-                        
-                        return (
-                            <div key={event.id} className="absolute left-2 right-2 z-10" style={{ top: `${top}px`, height: `${height - 2}px` }}>
-                                <TimedEventItem event={event} />
-                            </div>
-                        );
-                    })}
+                    {positionedEvents.map(({event, style}) => (
+                        <div 
+                            key={event.id} 
+                            className="absolute z-10" 
+                            style={{ 
+                                top: `${style.top}px`, 
+                                height: `${style.height}px`,
+                                left: `${style.left}%`,
+                                width: `${style.width}%`,
+                                paddingRight: '4px'
+                            }}
+                        >
+                            <TimedEventItem event={event} />
+                        </div>
+                    ))}
                 </div>
             </div>
         );
