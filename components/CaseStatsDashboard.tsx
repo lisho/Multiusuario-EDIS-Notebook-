@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Case, CaseStatus, Professional, Intervention, InterventionType, InterventionStatus, DashboardView, Task, User, ProfessionalRole } from '../types';
 import NewEventModal from './NewEventModal';
@@ -28,6 +29,7 @@ import {
     IoAlertCircleOutline,
     IoCheckmarkCircleOutline,
     IoWarningOutline,
+    IoJournalOutline
 } from 'react-icons/io5';
 
 interface CaseStatsDashboardProps {
@@ -42,6 +44,7 @@ interface CaseStatsDashboardProps {
   onDeleteIntervention: (intervention: Intervention) => void;
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
   currentUser: User;
+  onOpenAllNotes: () => void;
 }
 
 const interventionIcons: Record<InterventionType, React.ComponentType<{className?: string}>> = {
@@ -139,7 +142,7 @@ const AnimatedLi: React.FC<{ children: React.ReactNode; delay?: number; classNam
 };
 
 const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
-    const { cases, professionals, generalInterventions, generalTasks, onSelectCaseById, onOpenAllTasks, onSaveIntervention, onDeleteIntervention, requestConfirmation, currentUser } = props;
+    const { cases, professionals, generalInterventions, generalTasks, onSelectCaseById, onOpenAllTasks, onSaveIntervention, onDeleteIntervention, requestConfirmation, currentUser, onOpenAllNotes } = props;
 
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
     const [isExpiredActionsModalOpen, setIsExpiredActionsModalOpen] = useState(false);
@@ -388,14 +391,26 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                 
                 <div className="space-y-6">
                     <AnimatedItem delay={100}>
-                        <button onClick={onOpenAllTasks} className="w-full" title="Ver todas las tareas pendientes">
-                            <StatCard 
-                                icon={IoCheckboxOutline} 
-                                title="Tareas Pendientes" 
-                                value={stats.pendingTasksCount} 
-                                className="hover:bg-amber-100 transition-colors cursor-pointer"
-                            />
-                        </button>
+                        <div className="grid grid-cols-2 gap-4">
+                             <button onClick={onOpenAllTasks} className="w-full" title="Ver todas las tareas pendientes">
+                                <StatCard 
+                                    icon={IoCheckboxOutline} 
+                                    title="Tareas" 
+                                    value={stats.pendingTasksCount} 
+                                    className="hover:bg-amber-100 transition-colors cursor-pointer h-full"
+                                />
+                            </button>
+                            <button onClick={onOpenAllNotes} className="w-full" title="Ver todas mis notas y tareas agrupadas">
+                                <div className="bg-teal-50 p-5 rounded-lg shadow-sm border border-teal-200 flex flex-col items-center justify-center gap-2 text-center hover:bg-teal-100 transition-colors cursor-pointer h-full">
+                                    <div className="bg-teal-100 text-teal-700 rounded-full p-3">
+                                        <IoJournalOutline className="w-8 h-8" />
+                                    </div>
+                                    <div>
+                                        <p className="text-lg font-bold text-teal-700">Notas y Tareas</p>
+                                    </div>
+                                </div>
+                            </button>
+                        </div>
                     </AnimatedItem>
                     
                     <AnimatedItem delay={200}>

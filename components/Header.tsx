@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Professional } from '../types';
 import { IoAddOutline, IoChevronDownOutline, IoCreateOutline, IoLogOutOutline, IoAppsOutline, IoConstructOutline, IoCalendarOutline, IoStatsChartOutline } from 'react-icons/io5';
@@ -5,8 +6,8 @@ import { IoAddOutline, IoChevronDownOutline, IoCreateOutline, IoLogOutOutline, I
 interface HeaderProps {
     onNewCase: () => void;
     onNewTask: () => void;
-    currentView: 'cases' | 'admin' | 'calendar' | 'stats';
-    onSetView: (view: 'cases' | 'admin' | 'calendar' | 'stats') => void;
+    currentView: 'cases' | 'admin' | 'calendar' | 'stats' | 'allNotes';
+    onSetView: (view: 'cases' | 'admin' | 'calendar' | 'stats' | 'allNotes') => void;
     isCaseView: boolean;
     isSidebarCollapsed: boolean;
     currentUser: Professional | null;

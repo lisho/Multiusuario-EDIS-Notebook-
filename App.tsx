@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Header from './components/Header';
 import CaseDashboard from './components/CaseDashboard';
@@ -15,6 +16,8 @@ import QuickNoteModal from './components/QuickNoteModal';
 import Login from './components/Login';
 import ProfileEditorModal from './components/ProfileEditorModal';
 import GenogramViewer from './components/GenogramViewer';
+import AllNotesView from './components/AllNotesView';
+import { UnifiedItemData } from './components/UnifiedNoteModal';
 import { Case, CaseStatus, Task, AdminTool, Intervention, InterventionRecord, Professional, DashboardView, MyNote, User, ProfessionalRole } from './types';
 import { db, auth } from './services/firebase';
 import { signInAnonymously } from 'firebase/auth';
@@ -75,7 +78,7 @@ const App: React.FC = () => {
     const [professionals, setProfessionals] = useState<Professional[]>([]);
     const [generalInterventions, setGeneralInterventions] = useState<Intervention[]>([]);
     const [generalTasks, setGeneralTasks] = useState<Task[]>([]);
-    const [currentView, setCurrentView] = useState<'cases' | 'admin' | 'calendar' | 'stats'>('cases');
+    const [currentView, setCurrentView] = useState<'cases' | 'admin' | 'calendar' | 'stats' | 'allNotes'>('cases');
     const [selectedCase, setSelectedCase] = useState<Case | null>(null);
     const [initialDashboardView, setInitialDashboardView] = useState<DashboardView>('profile');
     const [isNewCaseModalOpen, setIsNewCaseModalOpen] = useState(false);
@@ -285,7 +288,7 @@ const App: React.FC = () => {
         return generalTasks.filter(task => task.createdBy === currentUser.id);
     }, [generalTasks, currentUser]);
 
-    const handleSetView = (view: 'cases' | 'admin' | 'calendar' | 'stats') => {
+    const handleSetView = (view: 'cases' | 'admin' | 'calendar' | 'stats' | 'allNotes') => {
         setSelectedCase(null);
         setCurrentView(view);
         setStatusFilter(null);
@@ -533,6 +536,150 @@ const App: React.FC = () => {
             setGeneralTasks(generalTasks.map(t => t.id === updatedTask.id ? updatedTask : t));
         } catch (error) {
             console.error("Error updating general task:", error);
+        }
+    };
+
+    // Unified Note/Task Handling
+    const handleSaveUnifiedNote = async (data: UnifiedItemData) => {
+        if (!currentUser) return;
+
+        const isEdit = !!data.id;
+        const targetCaseId = data.caseId;
+        const type = data.type; // 'note' or 'task'
+
+        // 1. Identify if we are moving/converting an existing item
+        // We need to search where it was before.
+        let previousLocation: { type: 'case' | 'general', caseId?: string, itemType: 'note' | 'task', item: any } | null = null;
+
+        if (isEdit) {
+            // Check general tasks
+            const genTask = generalTasks.find(t => t.id === data.id);
+            if (genTask) previousLocation = { type: 'general', itemType: 'task', item: genTask };
+
+            // Check cases
+            if (!previousLocation) {
+                for (const c of cases) {
+                    const note = c.myNotes?.find(n => n.id === data.id);
+                    if (note) {
+                        previousLocation = { type: 'case', caseId: c.id, itemType: 'note', item: note };
+                        break;
+                    }
+                    const task = c.tasks?.find(t => t.id === data.id);
+                    if (task) {
+                        previousLocation = { type: 'case', caseId: c.id, itemType: 'task', item: task };
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 2. Delete from previous location if it moved or changed type
+        if (previousLocation) {
+            const loc = previousLocation;
+            // If location changed OR type changed, delete old one. 
+            // If strictly same location and type, we will update in place later (or just overwrite).
+            // Simplification: Always delete old, create new/update target.
+            
+            if (loc.type === 'general') {
+                await deleteDoc(doc(db, "generalTasks", data.id!));
+                setGeneralTasks(prev => prev.filter(t => t.id !== data.id));
+            } else if (loc.type === 'case' && loc.caseId) {
+                const c = cases.find(k => k.id === loc.caseId);
+                if (c) {
+                    let update: Partial<Case> = {};
+                    if (loc.itemType === 'note') {
+                        update.myNotes = c.myNotes?.filter(n => n.id !== data.id) || [];
+                    } else {
+                        update.tasks = c.tasks.filter(t => t.id !== data.id);
+                    }
+                    // We do strictly ONE update per case doc if possible, but here we might update old case then new case.
+                    // For simplicity, let's update the old case now.
+                    await handleUpdateCase({ ...c, ...update });
+                }
+            }
+        }
+
+        // 3. Create/Update in new location
+        const newId = data.id || (type === 'note' ? `note-${Date.now()}` : `task-${Date.now()}`);
+        
+        if (targetCaseId) {
+            // It's going into a case
+            const targetCase = cases.find(c => c.id === targetCaseId);
+            if (targetCase) {
+                if (type === 'note') {
+                    const newNote: MyNote = {
+                        id: newId,
+                        content: data.content,
+                        color: data.color || 'yellow',
+                        createdAt: new Date().toISOString(),
+                        createdBy: currentUser.id
+                    };
+                    const currentNotes = targetCase.myNotes || [];
+                    await handleUpdateCase({ ...targetCase, myNotes: [newNote, ...currentNotes] });
+                } else {
+                     const newTask: Task = {
+                        id: newId,
+                        text: data.content,
+                        completed: data.isCompleted || false,
+                        createdBy: currentUser.id,
+                        assignedTo: [currentUser.id] // Default assign to self
+                    };
+                    await handleUpdateCase({ ...targetCase, tasks: [...targetCase.tasks, newTask] });
+                }
+            }
+        } else {
+            // It's General
+            // Notes without case become General Tasks (as per UI decision)
+            const newTask: Task = {
+                id: newId,
+                text: data.content,
+                completed: data.isCompleted || false,
+                createdBy: currentUser.id
+            };
+             try {
+                const docRef = doc(db, "generalTasks", newTask.id);
+                await setDoc(docRef, newTask);
+                setGeneralTasks(prevTasks => [...prevTasks, newTask]);
+            } catch (error) {
+                console.error("Error adding general task from unified view:", error);
+            }
+        }
+    };
+
+    const handleDeleteUnifiedItem = async (id: string, type: 'note' | 'task', caseId: string | null) => {
+        requestConfirmation(
+            'Eliminar Elemento',
+            '¿Estás seguro? Esta acción no se puede deshacer.',
+            async () => {
+                if (caseId) {
+                    const targetCase = cases.find(c => c.id === caseId);
+                    if (targetCase) {
+                        if (type === 'note') {
+                            const updatedNotes = (targetCase.myNotes || []).filter(n => n.id !== id);
+                            await handleUpdateCase({ ...targetCase, myNotes: updatedNotes });
+                        } else {
+                            const updatedTasks = targetCase.tasks.filter(t => t.id !== id);
+                            await handleUpdateCase({ ...targetCase, tasks: updatedTasks });
+                        }
+                    }
+                } else {
+                    // General Task
+                    try {
+                        await deleteDoc(doc(db, "generalTasks", id));
+                        setGeneralTasks(prev => prev.filter(t => t.id !== id));
+                    } catch (error) {
+                         console.error("Error deleting general task:", error);
+                    }
+                }
+            }
+        );
+    };
+
+    const handleToggleUnifiedTask = (id: string, caseId: string | null) => {
+        if (caseId) {
+             handleToggleTask(caseId, id);
+        } else {
+             handleToggleGeneralTask(id);
         }
     };
 
@@ -1082,6 +1229,16 @@ const App: React.FC = () => {
                             requestConfirmation={requestConfirmation}
                             currentUser={currentUser}
                         />;
+            case 'allNotes':
+                return <AllNotesView
+                            cases={visibleCases}
+                            generalTasks={currentUserGeneralTasks}
+                            currentUser={currentUser}
+                            onBack={() => setCurrentView('cases')}
+                            onSaveItem={handleSaveUnifiedNote}
+                            onDeleteItem={handleDeleteUnifiedItem}
+                            onToggleTask={handleToggleUnifiedTask}
+                        />;
             case 'cases':
             default:
                 const activeCases = visibleCases.filter(c => c.status !== CaseStatus.Closed);
@@ -1183,6 +1340,7 @@ const App: React.FC = () => {
                                     onDeleteIntervention={handleDeleteIntervention}
                                     requestConfirmation={requestConfirmation}
                                     currentUser={currentUser}
+                                    onOpenAllNotes={() => setCurrentView('allNotes')}
                                 />
                             </div>
                         )}
