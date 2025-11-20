@@ -1,13 +1,11 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Case, CaseStatus, Professional, ProfessionalRole, Intervention, InterventionType, InterventionStatus, DashboardView, Task, User } from '../types';
+import { Case, CaseStatus, Professional, Intervention, InterventionType, InterventionStatus, DashboardView, Task, User, ProfessionalRole } from '../types';
 import NewEventModal from './NewEventModal';
 import ExpiredActionsModal from './ExpiredActionsModal';
 import MissingProfessionalsModal from './MissingProfessionalsModal';
 import {
-    IoBriefcaseOutline,
     IoTimeOutline,
     IoCheckboxOutline,
-    IoLocationOutline,
     IoCalendarClearOutline,
     IoHomeOutline,
     IoCallOutline,
@@ -30,12 +28,7 @@ import {
     IoAlertCircleOutline,
     IoCheckmarkCircleOutline,
     IoWarningOutline,
-    IoBarChartOutline
 } from 'react-icons/io5';
-import { 
-    PieChart as RechartsPieChart, Pie, Cell, Tooltip, ResponsiveContainer, Label,
-    BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Legend
-} from 'recharts';
 
 interface CaseStatsDashboardProps {
   cases: Case[];
@@ -50,32 +43,6 @@ interface CaseStatsDashboardProps {
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
   currentUser: User;
 }
-
-const getStatusColorClass = (status: CaseStatus): string => {
-    switch (status) {
-        case CaseStatus.PendingReferral: return 'bg-amber-400';
-        case CaseStatus.Welcome: return 'bg-emerald-400';
-        case CaseStatus.CoDiagnosis: return 'bg-blue-400';
-        case CaseStatus.SharedPlanning: return 'bg-purple-400';
-        case CaseStatus.Accompaniment: return 'bg-teal-400';
-        case CaseStatus.FollowUp: return 'bg-lime-400';
-        case CaseStatus.Closed: return 'bg-zinc-400';
-        default: return 'bg-slate-400';
-    }
-};
-
-const getStatusHexColor = (status: CaseStatus): string => {
-    switch (status) {
-        case CaseStatus.PendingReferral: return '#fbbf24';
-        case CaseStatus.Welcome: return '#34d399';
-        case CaseStatus.CoDiagnosis: return '#60a5fa';
-        case CaseStatus.SharedPlanning: return '#a78bfa';
-        case CaseStatus.Accompaniment: return '#2dd4bf';
-        case CaseStatus.FollowUp: return '#a3e635';
-        case CaseStatus.Closed: return '#a1a1aa';
-        default: return '#94a3b8';
-    }
-};
 
 const interventionIcons: Record<InterventionType, React.ComponentType<{className?: string}>> = {
   [InterventionType.HomeVisit]: IoHomeOutline,
@@ -119,27 +86,6 @@ const interventionTypeStyles: Record<InterventionType, string> = {
     [InterventionType.CursoFormacion]: 'text-orange-600',
 };
 
-const interventionTypeHexColors: Record<string, string> = {
-    [InterventionType.HomeVisit]: '#10b981',
-    [InterventionType.PhoneCall]: '#38bdf8',
-    [InterventionType.Meeting]: '#6366f1',
-    [InterventionType.Workshop]: '#a855f7',
-    [InterventionType.Administrative]: '#64748b',
-    [InterventionType.Coordination]: '#f59e0b',
-    [InterventionType.PsychologicalSupport]: '#f43f5e',
-    [InterventionType.GroupSession]: '#22d3ee',
-    [InterventionType.Accompaniment]: '#84cc16',
-    [InterventionType.Other]: '#9ca3af',
-    [InterventionType.Reunion]: '#3b82f6',
-    [InterventionType.AssessmentInterview]: '#0ea5e9',
-    [InterventionType.ElaborarMemoria]: '#6b7280',
-    [InterventionType.ElaborarDocumento]: '#6b7280',
-    [InterventionType.Fiesta]: '#ec4899',
-    [InterventionType.Vacaciones]: '#facc15',
-    [InterventionType.Viaje]: '#06b6d4',
-    [InterventionType.CursoFormacion]: '#fb923c',
-};
-
 const statusStyles: Record<InterventionStatus, { dot: string, text: string, bg: string }> = {
     [InterventionStatus.Planned]: { dot: 'bg-blue-500', text: 'text-blue-800', bg: 'bg-blue-100' },
     [InterventionStatus.Completed]: { dot: 'bg-green-500', text: 'text-green-800', bg: 'bg-green-100' },
@@ -165,7 +111,7 @@ const StatCard: React.FC<{
 );
 
 const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
-    const { cases, professionals, generalInterventions, generalTasks, onSelectCaseById, onSetStatusFilter, onOpenAllTasks, onSaveIntervention, onDeleteIntervention, requestConfirmation, currentUser } = props;
+    const { cases, professionals, generalInterventions, generalTasks, onSelectCaseById, onOpenAllTasks, onSaveIntervention, onDeleteIntervention, requestConfirmation, currentUser } = props;
 
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
     const [isExpiredActionsModalOpen, setIsExpiredActionsModalOpen] = useState(false);
@@ -192,85 +138,15 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
 
     const stats = useMemo(() => {
         const activeCases = cases.filter(c => c.status !== CaseStatus.Closed);
-        const totalCases = activeCases.length;
         const pendingCaseTasks = activeCases.reduce((acc, c) => acc + c.tasks.filter(t => !t.completed).length, 0);
         const pendingGeneralTasks = generalTasks.filter(t => !t.completed).length;
         const pendingTasksCount = pendingCaseTasks + pendingGeneralTasks;
         
-        const statusOrder: CaseStatus[] = [
-            CaseStatus.PendingReferral,
-            CaseStatus.Welcome,
-            CaseStatus.CoDiagnosis,
-            CaseStatus.SharedPlanning,
-            CaseStatus.Accompaniment,
-            CaseStatus.FollowUp,
-            CaseStatus.Closed,
-        ];
-
-        const casesByStatus = Object.values(CaseStatus)
-            .map(status => ({
-                status,
-                count: activeCases.filter(c => c.status === status).length,
-                color: getStatusHexColor(status),
-                className: getStatusColorClass(status),
-            }))
-            .filter(item => item.count > 0)
-            .sort((a, b) => statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status));
-
         const recentlyUpdated = cases.slice(0, 3);
 
-        const ceasCounts: { [key: string]: number } = {};
-        const professionalMap = new Map(professionals.map(p => [p.id, p]));
-
-        activeCases.forEach(c => {
-            const socialWorker = c.professionalIds
-                ?.map(id => professionalMap.get(id))
-                .find(p => p?.role === ProfessionalRole.SocialWorker);
-            
-            const ceasName = socialWorker?.ceas || 'Sin CEAS Asignado';
-            ceasCounts[ceasName] = (ceasCounts[ceasName] || 0) + 1;
-        });
-
-        const casesByCeas = Object.entries(ceasCounts)
-            .map(([ceas, count]) => ({ ceas, count }))
-            .sort((a, b) => b.count - a.count);
-        
-        const maxCeasCount = casesByCeas.reduce((max, item) => Math.max(max, item.count), 0);
-
-        return { totalCases, pendingTasksCount, casesByStatus, recentlyUpdated, casesByCeas, maxCeasCount };
-    }, [cases, professionals, generalTasks]);
+        return { pendingTasksCount, recentlyUpdated };
+    }, [cases, generalTasks]);
     
-    const lastMonthStats = useMemo(() => {
-        const now = new Date();
-        const lastMonth = new Date();
-        lastMonth.setDate(now.getDate() - 30);
-        
-        const data: { name: string; total: number; [key: string]: any }[] = [];
-        const activeTypes = new Set<string>();
-
-        cases.forEach(c => {
-            const recentInterventions = c.interventions.filter(i => new Date(i.start) >= lastMonth);
-            if (recentInterventions.length > 0) {
-                const caseStats: any = { 
-                    name: c.name.split(' ')[0] + (c.nickname ? ` (${c.nickname})` : ''), 
-                    total: recentInterventions.length 
-                };
-                recentInterventions.forEach(i => {
-                    const type = i.interventionType;
-                    caseStats[type] = (caseStats[type] || 0) + 1;
-                    activeTypes.add(type);
-                });
-                data.push(caseStats);
-            }
-        });
-
-        // Sort by total interventions descending and take top 10
-        const sortedData = data.sort((a, b) => b.total - a.total).slice(0, 10);
-        const sortedTypes = Array.from(activeTypes).sort();
-
-        return { data: sortedData, types: sortedTypes };
-    }, [cases]);
-
     const todaysAgenda = useMemo(() => {
         const allInterventions = [
             ...cases.flatMap(c => c.interventions),
@@ -311,8 +187,8 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         return activeCases
             .map(caseData => {
                 const assignedProfs = (caseData.professionalIds || []).map(id => professionalMap.get(id)).filter(Boolean) as Professional[];
-                const hasTS = assignedProfs.some(p => p.role === ProfessionalRole.SocialWorker);
-                const hasEDIS = assignedProfs.some(p => p.role === ProfessionalRole.EdisTechnician);
+                const hasTS = assignedProfs.some(p => p.role === ProfessionalRole.SocialWorker || p.role === "Trabajador/a Social" as any);
+                const hasEDIS = assignedProfs.some(p => p.role === ProfessionalRole.EdisTechnician || p.role === "Técnico/a EDIS" as any);
                 
                 if (!hasTS || !hasEDIS) {
                     return { caseData, missingTS: !hasTS, missingEDIS: !hasEDIS };
@@ -374,57 +250,7 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         <>
             <div className="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
-                        <div className="flex items-center gap-2 mb-4">
-                            <IoBriefcaseOutline className="text-teal-600 text-xl" />
-                            <h3 className="font-semibold text-slate-800">Resumen de Casos Activos</h3>
-                        </div>
-                        <div className="flex flex-col sm:flex-row items-center gap-6">
-                            <div className="flex-shrink-0 w-40 h-40">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <RechartsPieChart>
-                                        <Pie
-                                            data={stats.casesByStatus}
-                                            dataKey="count"
-                                            nameKey="status"
-                                            cx="50%"
-                                            cy="50%"
-                                            innerRadius={50}
-                                            outerRadius={70}
-                                            paddingAngle={2}
-                                        >
-                                            {stats.casesByStatus.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={entry.color} />
-                                            ))}
-                                            <Label value={stats.totalCases} position="center" className="text-3xl font-bold text-slate-800" dy={-5} />
-                                            <Label value="Casos" position="center" className="text-sm text-slate-500" dy={15} />
-                                        </Pie>
-                                        <Tooltip formatter={(value: number, name: string, props) => [`${value} (${((value / stats.totalCases) * 100).toFixed(1)}%)`, props.payload.status]} />
-                                    </RechartsPieChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <div className="w-full flex-grow">
-                                <ul className="space-y-1 text-sm">
-                                    {stats.casesByStatus.map(({ status, count, className }) => (
-                                        <li key={status}>
-                                            <button
-                                                onClick={() => onSetStatusFilter(status)}
-                                                className="w-full flex justify-between items-center p-2 rounded-md hover:bg-slate-100 transition-colors text-left focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                                title={`Filtrar por "${status}"`}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <span className={`w-3 h-3 rounded-full ${className}`}></span>
-                                                    <span className="text-slate-600 font-medium">{status}</span>
-                                                </div>
-                                                <span className="font-bold text-slate-700 bg-slate-100 rounded-full px-2.5 py-0.5">{count}</span>
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-
+                    
                     <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
                         <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
                             <div className="flex items-center gap-2">
@@ -530,43 +356,6 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                         )}
                     </div>
                     
-                    {lastMonthStats.data.length > 0 && (
-                        <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
-                            <div className="flex items-center gap-2 mb-4">
-                                <IoBarChartOutline className="text-teal-600 text-xl" />
-                                <h3 className="font-semibold text-slate-800">Actuaciones último mes (Top 10 Casos)</h3>
-                            </div>
-                            <div className="h-[300px] w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <RechartsBarChart
-                                        data={lastMonthStats.data}
-                                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                                    >
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                        <XAxis 
-                                            dataKey="name" 
-                                            tick={{ fontSize: 11 }} 
-                                            interval={0}
-                                            angle={-25}
-                                            textAnchor="end"
-                                            height={60}
-                                        />
-                                        <YAxis />
-                                        <Tooltip />
-                                        <Legend wrapperStyle={{ fontSize: '12px' }} />
-                                        {lastMonthStats.types.map((type, index) => (
-                                            <Bar 
-                                                key={type} 
-                                                dataKey={type} 
-                                                stackId="a" 
-                                                fill={interventionTypeHexColors[type] || '#9ca3af'} 
-                                            />
-                                        ))}
-                                    </RechartsBarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                    )}
                 </div>
                 
                 <div className="space-y-6">
@@ -627,33 +416,6 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                 </div>
                             </div>
                         )}
-                    </div>
-
-                    <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
-                        <div className="flex items-center gap-2 mb-3">
-                            <IoLocationOutline className="text-teal-600 text-xl" />
-                            <h3 className="font-semibold text-slate-800">Casos por CEAS</h3>
-                        </div>
-                        <ul className="space-y-3 text-sm">
-                            {stats.casesByCeas.map(({ ceas, count }) => {
-                                const barWidth = stats.maxCeasCount > 0 ? (count / stats.maxCeasCount) * 100 : 0;
-                                return (
-                                    <li key={ceas}>
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="font-medium text-slate-600 truncate pr-2">{ceas}</span>
-                                            <span className="font-bold text-slate-700">{count}</span>
-                                        </div>
-                                        <div className="w-full bg-slate-200 rounded-full h-2.5">
-                                            <div
-                                                className="bg-teal-500 h-2.5 rounded-full"
-                                                style={{ width: `${barWidth}%` }}
-                                                title={`${count} caso(s)`}
-                                            ></div>
-                                        </div>
-                                    </li>
-                                );
-                            })}
-                        </ul>
                     </div>
                     
                     <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200">

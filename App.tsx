@@ -6,6 +6,7 @@ import NewCaseModal from './components/NewCaseModal';
 // FIX: Changed to a named import to resolve the "Module has no default export" error.
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import CaseStatsDashboard from './components/CaseStatsDashboard';
+import MyStatsDashboard from './components/MyStatsDashboard';
 import CalendarView from './components/CalendarView';
 import TasksSidePanel from './components/TasksSidePanel';
 import ConfirmationModal from './components/ConfirmationModal';
@@ -74,7 +75,7 @@ const App: React.FC = () => {
     const [professionals, setProfessionals] = useState<Professional[]>([]);
     const [generalInterventions, setGeneralInterventions] = useState<Intervention[]>([]);
     const [generalTasks, setGeneralTasks] = useState<Task[]>([]);
-    const [currentView, setCurrentView] = useState<'cases' | 'admin' | 'calendar'>('cases');
+    const [currentView, setCurrentView] = useState<'cases' | 'admin' | 'calendar' | 'stats'>('cases');
     const [selectedCase, setSelectedCase] = useState<Case | null>(null);
     const [initialDashboardView, setInitialDashboardView] = useState<DashboardView>('profile');
     const [isNewCaseModalOpen, setIsNewCaseModalOpen] = useState(false);
@@ -284,7 +285,7 @@ const App: React.FC = () => {
         return generalTasks.filter(task => task.createdBy === currentUser.id);
     }, [generalTasks, currentUser]);
 
-    const handleSetView = (view: 'cases' | 'admin' | 'calendar') => {
+    const handleSetView = (view: 'cases' | 'admin' | 'calendar' | 'stats') => {
         setSelectedCase(null);
         setCurrentView(view);
         setStatusFilter(null);
@@ -1065,6 +1066,11 @@ const App: React.FC = () => {
                             onDeleteIntervention={handleDeleteIntervention}
                             onBatchDeleteInterventions={handleBatchDeleteInterventions}
                             requestConfirmation={requestConfirmation}
+                        />;
+            case 'stats':
+                return <MyStatsDashboard 
+                            cases={visibleCases} 
+                            professionals={professionals}
                         />;
             case 'calendar':
                 return <CalendarView 

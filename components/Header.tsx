@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Professional } from '../types';
-import { IoAddOutline, IoChevronDownOutline, IoCreateOutline, IoLogOutOutline, IoAppsOutline, IoConstructOutline, IoCalendarOutline } from 'react-icons/io5';
+import { IoAddOutline, IoChevronDownOutline, IoCreateOutline, IoLogOutOutline, IoAppsOutline, IoConstructOutline, IoCalendarOutline, IoStatsChartOutline } from 'react-icons/io5';
 
 interface HeaderProps {
     onNewCase: () => void;
     onNewTask: () => void;
-    currentView: 'cases' | 'admin' | 'calendar';
-    onSetView: (view: 'cases' | 'admin' | 'calendar') => void;
+    currentView: 'cases' | 'admin' | 'calendar' | 'stats';
+    onSetView: (view: 'cases' | 'admin' | 'calendar' | 'stats') => void;
     isCaseView: boolean;
     isSidebarCollapsed: boolean;
     currentUser: Professional | null;
@@ -32,7 +32,7 @@ const Header: React.FC<HeaderProps> = ({ onNewCase, onNewTask, currentView, onSe
         };
     }, []);
     
-    const NavButton: React.FC<{ view: 'cases' | 'admin' | 'calendar'; label: string; icon: React.ComponentType<{className?: string}>}> = ({ view, label, icon: Icon }) => {
+    const NavButton: React.FC<{ view: 'cases' | 'admin' | 'calendar' | 'stats'; label: string; icon: React.ComponentType<{className?: string}>}> = ({ view, label, icon: Icon }) => {
         const isActive = currentView === view && !isCaseView;
         return (
             <button
@@ -59,10 +59,11 @@ const Header: React.FC<HeaderProps> = ({ onNewCase, onNewTask, currentView, onSe
                 </div>
                 <div className="hidden md:flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
                     <NavButton view="cases" label="Mesa de Trabajo" icon={IoAppsOutline} />
+                    <NavButton view="calendar" label="Calendario" icon={IoCalendarOutline} />
+                    <NavButton view="stats" label="Mis Estadísticas" icon={IoStatsChartOutline} />
                     {currentUser?.systemRole === 'admin' && (
                         <NavButton view="admin" label="Administración" icon={IoConstructOutline} />
                     )}
-                    <NavButton view="calendar" label="Calendario" icon={IoCalendarOutline} />
                 </div>
             </div>
             

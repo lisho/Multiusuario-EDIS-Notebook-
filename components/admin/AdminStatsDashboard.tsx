@@ -149,9 +149,9 @@ const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, profes
         }, {} as Record<string, number>);
         
         const interventionsByTypeChartData = Object.entries(interventionsByType)
-            .map(([label, value]) => ({ label, value }))
+            .map(([label, value]): { label: string; value: number } => ({ label, value }))
             // FIX: Explicitly type the sort comparator arguments to avoid arithmetic errors.
-            .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
+            .sort((a, b) => b.value - a.value);
 
         const casesPerProfessional: Record<string, number> = {};
         activeCases.forEach(c => {
