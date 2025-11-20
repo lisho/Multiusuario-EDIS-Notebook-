@@ -110,6 +110,34 @@ const StatCard: React.FC<{
     </div>
 );
 
+const AnimatedItem: React.FC<{ children: React.ReactNode; delay?: number }> = ({ children, delay = 0 }) => {
+    const [isVisible, setIsVisible] = useState(false);
+    useEffect(() => {
+        const timer = setTimeout(() => setIsVisible(true), delay);
+        return () => clearTimeout(timer);
+    }, [delay]);
+
+    return (
+        <div className={`transition-all duration-700 ease-out transform ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+            {children}
+        </div>
+    );
+};
+
+const AnimatedLi: React.FC<{ children: React.ReactNode; delay?: number; className?: string }> = ({ children, delay = 0, className = "" }) => {
+    const [isVisible, setIsVisible] = useState(false);
+    useEffect(() => {
+        const timer = setTimeout(() => setIsVisible(true), delay);
+        return () => clearTimeout(timer);
+    }, [delay]);
+
+    return (
+        <li className={`${className} transition-all duration-500 ease-out transform ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+            {children}
+        </li>
+    );
+};
+
 const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
     const { cases, professionals, generalInterventions, generalTasks, onSelectCaseById, onOpenAllTasks, onSaveIntervention, onDeleteIntervention, requestConfirmation, currentUser } = props;
 
@@ -250,190 +278,196 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         <>
             <div className="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                 <div className="lg:col-span-2 space-y-6">
-                    
-                    <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
-                        <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
-                            <div className="flex items-center gap-2">
-                                <IoCalendarClearOutline className="text-teal-600 text-xl" />
-                                <h3 className="font-semibold text-slate-800">Agenda de Hoy</h3>
+                    <AnimatedItem delay={0}>
+                        <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
+                            <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
+                                <div className="flex items-center gap-2">
+                                    <IoCalendarClearOutline className="text-teal-600 text-xl" />
+                                    <h3 className="font-semibold text-slate-800">Agenda de Hoy</h3>
+                                </div>
+                                <button
+                                    onClick={handleAddNewEventForToday}
+                                    className="bg-teal-50 text-teal-700 h-9 px-3 rounded-lg hover:bg-teal-100 font-semibold flex items-center justify-center gap-1.5 transition-colors text-sm border border-teal-200"
+                                    title="Añadir intervención para hoy"
+                                >
+                                    <IoAddOutline className="text-lg" /> Añadir Intervención
+                                </button>
                             </div>
-                            <button
-                                onClick={handleAddNewEventForToday}
-                                className="bg-teal-50 text-teal-700 h-9 px-3 rounded-lg hover:bg-teal-100 font-semibold flex items-center justify-center gap-1.5 transition-colors text-sm border border-teal-200"
-                                title="Añadir intervención para hoy"
-                            >
-                                <IoAddOutline className="text-lg" /> Añadir Intervención
-                            </button>
-                        </div>
-                        {todaysAgenda.length > 0 ? (
-                            <ul className="space-y-3">
-                                {todaysAgenda.map(event => {
-                                    const Icon = interventionIcons[event.interventionType] || IoDocumentTextOutline;
-                                    const styleClass = interventionTypeStyles[event.interventionType] || 'text-gray-500';
-                                    const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
-                                    const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
-                                    const currentStatusStyle = statusStyles[event.status];
-                                    
-                                    return (
-                                        <li key={event.id} className={`p-3 rounded-lg border flex flex-col gap-3 transition-colors ${event.status === InterventionStatus.Cancelled ? 'bg-slate-50 opacity-70' : 'bg-white'}`}>
-                                            <div className="flex items-start gap-4">
-                                                <div className="flex flex-col items-center flex-shrink-0 w-16 text-center">
-                                                    <p className={`font-bold text-slate-700 ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`}>
-                                                        {event.isAllDay ? 'Todo el día' : timeFormat.format(new Date(event.start))}
-                                                    </p>
-                                                    <Icon className={`mt-1 text-2xl ${styleClass}`}/>
-                                                </div>
-                                                <div className="flex-grow min-w-0">
-                                                    <p className={`font-semibold text-slate-800 truncate ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`} title={event.title}>{event.title}</p>
-                                                    <p className={`text-sm text-slate-500 ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`}>{event.interventionType}</p>
-                                                    {caseForEvent && (
-                                                        <button 
-                                                            onClick={() => onSelectCaseById(caseForEvent.id)}
-                                                            className="text-sm text-teal-700 hover:underline font-medium truncate text-left"
-                                                        >
-                                                            {caseForEvent.name}
-                                                            {caseForEvent.nickname && ` (${caseForEvent.nickname})`}
-                                                        </button>
-                                                    )}
-                                                </div>
-                                                <button onClick={() => handleOpenEditModal(event)} className="text-slate-400 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors" title="Editar intervención">
-                                                    <IoPencilOutline className="text-lg" />
-                                                </button>
-                                            </div>
-                                            <div className="flex items-center justify-between pl-20">
-                                                <label 
-                                                    className={`flex items-center gap-1.5 text-sm ${!event.caseId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                                                    title={!event.caseId ? "Solo se pueden registrar intervenciones de un caso" : "Registrar en Cuaderno de Campo"}
-                                                 >
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={!!event.isRegistered} 
-                                                        disabled={!event.caseId}
-                                                        onChange={(e) => handleRegisterToggle(event, e.target.checked)}
-                                                        className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed" 
-                                                    />
-                                                    <IoBookOutline className="text-slate-500"/>
-                                                </label>
-                                                
-                                                <div className="relative" ref={openMenuId === event.id ? menuRef : null}>
-                                                    <button
-                                                        onClick={() => setOpenMenuId(openMenuId === event.id ? null : event.id)}
-                                                        className={`flex items-center gap-2 text-xs font-semibold px-2 py-1 rounded-md border ${currentStatusStyle.bg} ${currentStatusStyle.text}`}
-                                                    >
-                                                        <span className={`w-2 h-2 rounded-full ${currentStatusStyle.dot}`}></span>
-                                                        {event.status}
+                            {todaysAgenda.length > 0 ? (
+                                <ul className="space-y-3">
+                                    {todaysAgenda.map((event, index) => {
+                                        const Icon = interventionIcons[event.interventionType] || IoDocumentTextOutline;
+                                        const styleClass = interventionTypeStyles[event.interventionType] || 'text-gray-500';
+                                        const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
+                                        const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                        const currentStatusStyle = statusStyles[event.status];
+                                        
+                                        return (
+                                            <AnimatedLi key={event.id} delay={index * 100} className={`p-3 rounded-lg border flex flex-col gap-3 transition-colors shadow-sm ${event.status === InterventionStatus.Cancelled ? 'bg-slate-50 opacity-70' : 'bg-white'}`}>
+                                                <div className="flex items-start gap-4">
+                                                    <div className="flex flex-col items-center flex-shrink-0 w-16 text-center">
+                                                        <p className={`font-bold text-slate-700 ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`}>
+                                                            {event.isAllDay ? 'Todo el día' : timeFormat.format(new Date(event.start))}
+                                                        </p>
+                                                        <Icon className={`mt-1 text-2xl ${styleClass}`}/>
+                                                    </div>
+                                                    <div className="flex-grow min-w-0">
+                                                        <p className={`font-semibold text-slate-800 truncate ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`} title={event.title}>{event.title}</p>
+                                                        <p className={`text-sm text-slate-500 ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`}>{event.interventionType}</p>
+                                                        {caseForEvent && (
+                                                            <button 
+                                                                onClick={() => onSelectCaseById(caseForEvent.id)}
+                                                                className="text-sm text-teal-700 hover:underline font-medium truncate text-left"
+                                                            >
+                                                                {caseForEvent.name}
+                                                                {caseForEvent.nickname && ` (${caseForEvent.nickname})`}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <button onClick={() => handleOpenEditModal(event)} className="text-slate-400 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors" title="Editar intervención">
+                                                        <IoPencilOutline className="text-lg" />
                                                     </button>
-                                                    {openMenuId === event.id && (
-                                                        <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">
-                                                            <div className="py-1" role="menu" aria-orientation="vertical">
-                                                                {Object.values(InterventionStatus).map(status => {
-                                                                    const style = statusStyles[status];
-                                                                    return (
-                                                                        <button
-                                                                            key={status}
-                                                                            onClick={() => handleStatusChange(event, status)}
-                                                                            className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
-                                                                            role="menuitem"
-                                                                        >
-                                                                            <span className={`w-2 h-2 rounded-full ${style.dot}`}></span>
-                                                                            {status}
-                                                                        </button>
-                                                                    )
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    )}
                                                 </div>
-                                            </div>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                        ) : (
-                            <div className="text-center text-slate-500 py-6">
-                                <p>No hay nada programado para hoy.</p>
-                            </div>
-                        )}
-                    </div>
-                    
+                                                <div className="flex items-center justify-between pl-20">
+                                                    <label 
+                                                        className={`flex items-center gap-1.5 text-sm ${!event.caseId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                                                        title={!event.caseId ? "Solo se pueden registrar intervenciones de un caso" : "Registrar en Cuaderno de Campo"}
+                                                    >
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={!!event.isRegistered} 
+                                                            disabled={!event.caseId}
+                                                            onChange={(e) => handleRegisterToggle(event, e.target.checked)}
+                                                            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed" 
+                                                        />
+                                                        <IoBookOutline className="text-slate-500"/>
+                                                    </label>
+                                                    
+                                                    <div className="relative" ref={openMenuId === event.id ? menuRef : null}>
+                                                        <button
+                                                            onClick={() => setOpenMenuId(openMenuId === event.id ? null : event.id)}
+                                                            className={`flex items-center gap-2 text-xs font-semibold px-2 py-1 rounded-md border ${currentStatusStyle.bg} ${currentStatusStyle.text}`}
+                                                        >
+                                                            <span className={`w-2 h-2 rounded-full ${currentStatusStyle.dot}`}></span>
+                                                            {event.status}
+                                                        </button>
+                                                        {openMenuId === event.id && (
+                                                            <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">
+                                                                <div className="py-1" role="menu" aria-orientation="vertical">
+                                                                    {Object.values(InterventionStatus).map(status => {
+                                                                        const style = statusStyles[status];
+                                                                        return (
+                                                                            <button
+                                                                                key={status}
+                                                                                onClick={() => handleStatusChange(event, status)}
+                                                                                className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                                                                                role="menuitem"
+                                                                            >
+                                                                                <span className={`w-2 h-2 rounded-full ${style.dot}`}></span>
+                                                                                {status}
+                                                                            </button>
+                                                                        )
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </AnimatedLi>
+                                        );
+                                    })}
+                                </ul>
+                            ) : (
+                                <div className="text-center text-slate-500 py-6">
+                                    <p>No hay nada programado para hoy.</p>
+                                </div>
+                            )}
+                        </div>
+                    </AnimatedItem>
                 </div>
                 
                 <div className="space-y-6">
-                    <button onClick={onOpenAllTasks} className="w-full" title="Ver todas las tareas pendientes">
-                        <StatCard 
-                            icon={IoCheckboxOutline} 
-                            title="Tareas Pendientes" 
-                            value={stats.pendingTasksCount} 
-                            className="hover:bg-amber-100 transition-colors cursor-pointer"
-                        />
-                    </button>
+                    <AnimatedItem delay={100}>
+                        <button onClick={onOpenAllTasks} className="w-full" title="Ver todas las tareas pendientes">
+                            <StatCard 
+                                icon={IoCheckboxOutline} 
+                                title="Tareas Pendientes" 
+                                value={stats.pendingTasksCount} 
+                                className="hover:bg-amber-100 transition-colors cursor-pointer"
+                            />
+                        </button>
+                    </AnimatedItem>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        {expiredActions.length > 0 ? (
-                            <button onClick={() => setIsExpiredActionsModalOpen(true)} className="w-full h-full" title="Gestionar acciones caducadas">
-                                <div className="bg-red-50 p-5 rounded-lg shadow-sm border border-red-200 flex flex-col items-center justify-center gap-2 text-center hover:bg-red-100 transition-colors cursor-pointer h-full">
-                                    <div className="bg-red-100 text-red-700 rounded-full p-3">
-                                        <IoAlertCircleOutline className="w-8 h-8" />
+                    <AnimatedItem delay={200}>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            {expiredActions.length > 0 ? (
+                                <button onClick={() => setIsExpiredActionsModalOpen(true)} className="w-full h-full" title="Gestionar acciones caducadas">
+                                    <div className="bg-red-50 p-5 rounded-lg shadow-sm border border-red-200 flex flex-col items-center justify-center gap-2 text-center hover:bg-red-100 transition-colors cursor-pointer h-full">
+                                        <div className="bg-red-100 text-red-700 rounded-full p-3">
+                                            <IoAlertCircleOutline className="w-8 h-8" />
+                                        </div>
+                                        <div>
+                                            <p className="text-2xl font-bold text-red-600">{expiredActions.length}</p>
+                                            <p className="text-sm font-medium text-slate-500">Acciones Caducadas</p>
+                                        </div>
+                                    </div>
+                                </button>
+                            ) : (
+                                <div className="bg-emerald-50 p-5 rounded-lg shadow-sm border border-emerald-200 flex flex-col items-center justify-center gap-2 text-center h-full">
+                                    <div className="bg-emerald-100 text-emerald-700 rounded-full p-3">
+                                        <IoCheckmarkCircleOutline className="w-8 h-8" />
                                     </div>
                                     <div>
-                                        <p className="text-2xl font-bold text-red-600">{expiredActions.length}</p>
+                                        <p className="text-lg font-semibold text-emerald-800">Todo en orden</p>
                                         <p className="text-sm font-medium text-slate-500">Acciones Caducadas</p>
                                     </div>
                                 </div>
-                            </button>
-                        ) : (
-                            <div className="bg-emerald-50 p-5 rounded-lg shadow-sm border border-emerald-200 flex flex-col items-center justify-center gap-2 text-center h-full">
-                                <div className="bg-emerald-100 text-emerald-700 rounded-full p-3">
-                                    <IoCheckmarkCircleOutline className="w-8 h-8" />
-                                </div>
-                                <div>
-                                    <p className="text-lg font-semibold text-emerald-800">Todo en orden</p>
-                                    <p className="text-sm font-medium text-slate-500">Acciones Caducadas</p>
-                                </div>
-                            </div>
-                        )}
+                            )}
 
-                        {casesWithMissingProfs.length > 0 ? (
-                            <button onClick={() => setIsMissingProfsModalOpen(true)} className="w-full h-full" title="Gestionar casos sin profesionales">
-                                <div className="bg-purple-50 p-5 rounded-lg shadow-sm border border-purple-200 flex flex-col items-center justify-center gap-2 text-center hover:bg-purple-100 transition-colors cursor-pointer h-full">
-                                    <div className="bg-purple-100 text-purple-700 rounded-full p-3">
-                                        <IoWarningOutline className="w-8 h-8" />
+                            {casesWithMissingProfs.length > 0 ? (
+                                <button onClick={() => setIsMissingProfsModalOpen(true)} className="w-full h-full" title="Gestionar casos sin profesionales">
+                                    <div className="bg-purple-50 p-5 rounded-lg shadow-sm border border-purple-200 flex flex-col items-center justify-center gap-2 text-center hover:bg-purple-100 transition-colors cursor-pointer h-full">
+                                        <div className="bg-purple-100 text-purple-700 rounded-full p-3">
+                                            <IoWarningOutline className="w-8 h-8" />
+                                        </div>
+                                        <div>
+                                            <p className="text-2xl font-bold text-purple-600">{casesWithMissingProfs.length}</p>
+                                            <p className="text-sm font-medium text-slate-500">Asignaciones Pendientes</p>
+                                        </div>
+                                    </div>
+                                </button>
+                            ) : (
+                                <div className="bg-emerald-50 p-5 rounded-lg shadow-sm border border-emerald-200 flex flex-col items-center justify-center gap-2 text-center h-full">
+                                    <div className="bg-emerald-100 text-emerald-700 rounded-full p-3">
+                                        <IoCheckmarkCircleOutline className="w-8 h-8" />
                                     </div>
                                     <div>
-                                        <p className="text-2xl font-bold text-purple-600">{casesWithMissingProfs.length}</p>
-                                        <p className="text-sm font-medium text-slate-500">Asignaciones Pendientes</p>
+                                        <p className="text-lg font-semibold text-emerald-800">Todo en orden</p>
+                                        <p className="text-sm font-medium text-slate-500">Asignaciones</p>
                                     </div>
                                 </div>
-                            </button>
-                        ) : (
-                            <div className="bg-emerald-50 p-5 rounded-lg shadow-sm border border-emerald-200 flex flex-col items-center justify-center gap-2 text-center h-full">
-                                <div className="bg-emerald-100 text-emerald-700 rounded-full p-3">
-                                    <IoCheckmarkCircleOutline className="w-8 h-8" />
-                                </div>
-                                <div>
-                                    <p className="text-lg font-semibold text-emerald-800">Todo en orden</p>
-                                    <p className="text-sm font-medium text-slate-500">Asignaciones</p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                    
-                    <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
-                        <div className="flex items-center gap-2 mb-3">
-                            <IoTimeOutline className="text-teal-600 text-xl" />
-                            <h3 className="font-semibold text-slate-800">Actualizados Recientemente</h3>
+                            )}
                         </div>
-                        <ul className="space-y-2 text-sm">
-                            {stats.recentlyUpdated.map(c => (
-                                <li key={c.id} className="flex justify-between items-center">
-                                    <button onClick={() => onSelectCaseById(c.id)} className="text-teal-700 hover:underline font-medium truncate" title={`Abrir caso de ${c.name}`}>
-                                        {c.name}
-                                    </button>
-                                    <span className="text-slate-500 flex-shrink-0 ml-2">{timeSinceSpanish(c.lastUpdate)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
+                    </AnimatedItem>
+                    
+                    <AnimatedItem delay={300}>
+                        <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
+                            <div className="flex items-center gap-2 mb-3">
+                                <IoTimeOutline className="text-teal-600 text-xl" />
+                                <h3 className="font-semibold text-slate-800">Actualizados Recientemente</h3>
+                            </div>
+                            <ul className="space-y-2 text-sm">
+                                {stats.recentlyUpdated.map(c => (
+                                    <li key={c.id} className="flex justify-between items-center">
+                                        <button onClick={() => onSelectCaseById(c.id)} className="text-teal-700 hover:underline font-medium truncate" title={`Abrir caso de ${c.name}`}>
+                                            {c.name}
+                                        </button>
+                                        <span className="text-slate-500 flex-shrink-0 ml-2">{timeSinceSpanish(c.lastUpdate)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </AnimatedItem>
                 </div>
             </div>
             <NewEventModal

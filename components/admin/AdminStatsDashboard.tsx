@@ -12,7 +12,7 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
 
 export const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, professionals, allInterventions }) => {
     
-    const casesPerProfessional = useMemo(() => {
+    const casesPerProfessional = useMemo<Record<string, number>>(() => {
         const counts: Record<string, number> = {};
         cases.forEach(c => {
             c.professionalIds?.forEach(pid => {
@@ -22,7 +22,7 @@ export const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases,
         return counts;
     }, [cases]);
 
-    const casesByCeas = useMemo(() => {
+    const casesByCeas = useMemo<Record<string, number>>(() => {
         const counts: Record<string, number> = {};
         const professionalMap = new Map(professionals.map(p => [p.id, p]));
         
@@ -53,7 +53,7 @@ export const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases,
         .sort((a, b) => b.value - a.value), [professionals, casesPerProfessional]);
         
     const casesByCeasData = useMemo(() => Object.entries(casesByCeas)
-        .map(([label, value]): { label: string; value: number } => ({ label, value }))
+        .map(([label, value]): { label: string; value: number } => ({ label, value: value as number }))
         .filter(p => p.value > 0)
         .sort((a, b) => b.value - a.value), [casesByCeas]);
 

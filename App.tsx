@@ -22,7 +22,7 @@ import { collection, query, getDocs, addDoc, doc, updateDoc, deleteDoc, writeBat
 import { IoAddOutline, IoCloseCircleOutline, IoSearchOutline, IoChevronDownOutline, IoWarningOutline, IoCloseOutline } from 'react-icons/io5';
 import { BsPinAngleFill } from 'react-icons/bs';
 
-const AnimatedSection: React.FC<{ children: React.ReactNode; delay: number }> = ({ children, delay }) => {
+const AnimatedSection: React.FC<{ children: React.ReactNode; delay: number; className?: string }> = ({ children, delay, className = "" }) => {
     const ref = useRef<HTMLDivElement>(null);
     const [isVisible, setIsVisible] = useState(false);
 
@@ -53,7 +53,7 @@ const AnimatedSection: React.FC<{ children: React.ReactNode; delay: number }> = 
         <div
             ref={ref}
             style={{ transitionDelay: `${delay}ms` }}
-            className={`h-full transition-all duration-500 ease-out ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'}`}
+            className={`transition-all duration-500 ease-out ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'} ${className}`}
         >
             {children}
         </div>
@@ -1127,7 +1127,7 @@ const App: React.FC = () => {
                 const renderCaseList = (caseList: Case[]) => (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                         {caseList.map((caseData, index) => (
-                            <AnimatedSection key={caseData.id} delay={index * 50}>
+                            <AnimatedSection key={caseData.id} delay={index * 50} className="h-full">
                                 <div 
                                     onDragOver={e => e.preventDefault()}
                                     onDrop={() => handleDrop(caseData)}
@@ -1156,16 +1156,18 @@ const App: React.FC = () => {
                     <div className="container mx-auto px-4 py-8">
                         <h2 className="text-3xl font-bold text-slate-800 mb-6">Mesa de Trabajo</h2>
                         
-                        <div className="relative mb-8">
-                            <IoSearchOutline className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xl" />
-                            <input
-                                type="text"
-                                placeholder="Buscar caso por nombre o apodo..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-12 pr-4 py-3 text-base border rounded-lg focus:outline-none focus:ring-2 bg-white text-slate-900 placeholder:text-slate-500 border-slate-300 focus:ring-teal-500 shadow-sm"
-                            />
-                        </div>
+                        <AnimatedSection delay={0}>
+                            <div className="relative mb-8">
+                                <IoSearchOutline className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xl" />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar caso por nombre o apodo..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-3 text-base border rounded-lg focus:outline-none focus:ring-2 bg-white text-slate-900 placeholder:text-slate-500 border-slate-300 focus:ring-teal-500 shadow-sm"
+                                />
+                            </div>
+                        </AnimatedSection>
                         
                         {!statusFilter && !searchQuery && visibleCases.length > 0 && (
                             <div className="mb-12">
@@ -1204,11 +1206,15 @@ const App: React.FC = () => {
                                      <div>
                                         {pinnedCases.length > 0 && (
                                             <div className="mb-12">
-                                                <h2 className="text-2xl font-bold text-slate-700 mb-6 pb-4 border-b border-slate-200 flex items-center gap-2"><BsPinAngleFill className="text-teal-600"/> Casos Fijados</h2>
+                                                <AnimatedSection delay={0}>
+                                                    <h2 className="text-2xl font-bold text-slate-700 mb-6 pb-4 border-b border-slate-200 flex items-center gap-2"><BsPinAngleFill className="text-teal-600"/> Casos Fijados</h2>
+                                                </AnimatedSection>
                                                 {renderCaseList(pinnedCases)}
                                             </div>
                                         )}
-                                        <h2 className="text-2xl font-bold text-slate-700 mb-6 pb-4 border-b border-slate-200">Mis Casos</h2>
+                                        <AnimatedSection delay={100}>
+                                            <h2 className="text-2xl font-bold text-slate-700 mb-6 pb-4 border-b border-slate-200">Mis Casos</h2>
+                                        </AnimatedSection>
                                         {unpinnedCases.length > 0 ? (
                                             renderCaseList(unpinnedCases)
                                         ) : (
@@ -1232,7 +1238,7 @@ const App: React.FC = () => {
                                         {(isClosedCasesVisible || isDisplayingOnlyClosed) && (
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                                 {displayedClosedCases.map((caseData, index) => (
-                                                    <AnimatedSection key={caseData.id} delay={index * 50}>
+                                                    <AnimatedSection key={caseData.id} delay={index * 50} className="h-full">
                                                         <CaseCard 
                                                             caseData={caseData}
                                                             professionals={professionals}

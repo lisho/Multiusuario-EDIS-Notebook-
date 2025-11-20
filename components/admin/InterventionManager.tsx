@@ -24,9 +24,9 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({
 }) => {
     const [newTypeSelections, setNewTypeSelections] = useState<Record<string, InterventionType>>({});
 
-    const standardTypes = useMemo(() => new Set(Object.values(InterventionType)), []);
+    const standardTypes = useMemo<Set<InterventionType>>(() => new Set(Object.values(InterventionType)), []);
     
-    const inconsistentInterventionsGrouped = useMemo(() => {
+    const inconsistentInterventionsGrouped = useMemo<Record<string, Intervention[]>>(() => {
         const grouped: Record<string, Intervention[]> = {};
         allInterventions.forEach(i => {
              // Check if type exists in enum values
@@ -72,7 +72,7 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({
                     </h3>
                     <p className="text-amber-700 text-sm mb-4">Se han detectado registros con tipos de intervención que no coinciden con la lista oficial (posiblemente importados). Puedes corregirlos masivamente aquí.</p>
                     <div className="space-y-4">
-                        {Object.entries(inconsistentInterventionsGrouped).map(([invalidType, interventions]) => (
+                        {Object.entries(inconsistentInterventionsGrouped).map(([invalidType, interventions]: [string, Intervention[]]) => (
                             <div key={invalidType} className="flex flex-col sm:flex-row sm:items-center gap-4 bg-white p-4 rounded shadow-sm border border-amber-100">
                                 <div className="flex-grow">
                                     <p className="font-semibold text-slate-700">Tipo inválido: <span className="text-red-600">"{invalidType}"</span></p>
