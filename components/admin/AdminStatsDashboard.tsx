@@ -150,7 +150,8 @@ const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, profes
         
         const interventionsByTypeChartData = Object.entries(interventionsByType)
             .map(([label, value]) => ({ label, value }))
-            .sort((a, b) => b.value - a.value);
+            // FIX: Explicitly type the sort comparator arguments to avoid arithmetic errors.
+            .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
 
         const casesPerProfessional: Record<string, number> = {};
         activeCases.forEach(c => {
@@ -163,13 +164,15 @@ const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, profes
             .filter(p => p.role === ProfessionalRole.EdisTechnician && p.systemRole !== 'admin')
             .map(p => ({ label: p.name, value: casesPerProfessional[p.id] || 0 }))
             .filter(p => p.value > 0)
-            .sort((a, b) => b.value - a.value);
+            // FIX: Explicitly type the sort comparator arguments to avoid arithmetic errors.
+            .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
 
         const casesByTsData = professionals
             .filter(p => p.role === ProfessionalRole.SocialWorker)
             .map(p => ({ label: p.name, value: casesPerProfessional[p.id] || 0 }))
             .filter(p => p.value > 0)
-            .sort((a, b) => b.value - a.value);
+            // FIX: Explicitly type the sort comparator arguments to avoid arithmetic errors.
+            .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
             
         const casesByCeas: Record<string, number> = {};
         const profMap = new Map(professionals.map(p => [p.id, p]));
@@ -184,12 +187,14 @@ const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases, profes
         const casesByCeasData = Object.entries(casesByCeas)
             .map(([label, value]) => ({ label, value }))
             .filter(p => p.value > 0)
-            .sort((a, b) => b.value - a.value);
+            // FIX: Explicitly type the sort comparator arguments to avoid arithmetic errors.
+            .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
 
         const availableYears = Array.from(new Set(allInterventions
             .map(i => new Date(i.start).getFullYear())
             .filter(year => year >= 2020)
-        )).sort((a, b) => b - a).map(String);
+            // FIX: Explicitly type the sort comparator arguments to avoid arithmetic errors.
+        )).sort((a: number, b: number) => b - a).map(String);
         
         const filteredInterventionsByYear = selectedYear === 'all'
             ? allInterventions

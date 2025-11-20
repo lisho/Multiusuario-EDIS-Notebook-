@@ -29,9 +29,13 @@ import {
     IoBookOutline,
     IoAlertCircleOutline,
     IoCheckmarkCircleOutline,
-    IoWarningOutline
+    IoWarningOutline,
+    IoBarChartOutline
 } from 'react-icons/io5';
-import { PieChart as RechartsPieChart, Pie, Cell, Tooltip, ResponsiveContainer, Label } from 'recharts';
+import { 
+    PieChart as RechartsPieChart, Pie, Cell, Tooltip, ResponsiveContainer, Label,
+    BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Legend
+} from 'recharts';
 
 interface CaseStatsDashboardProps {
   cases: Case[];
@@ -113,6 +117,27 @@ const interventionTypeStyles: Record<InterventionType, string> = {
     [InterventionType.Vacaciones]: 'text-yellow-600',
     [InterventionType.Viaje]: 'text-cyan-500',
     [InterventionType.CursoFormacion]: 'text-orange-600',
+};
+
+const interventionTypeHexColors: Record<string, string> = {
+    [InterventionType.HomeVisit]: '#10b981',
+    [InterventionType.PhoneCall]: '#38bdf8',
+    [InterventionType.Meeting]: '#6366f1',
+    [InterventionType.Workshop]: '#a855f7',
+    [InterventionType.Administrative]: '#64748b',
+    [InterventionType.Coordination]: '#f59e0b',
+    [InterventionType.PsychologicalSupport]: '#f43f5e',
+    [InterventionType.GroupSession]: '#22d3ee',
+    [InterventionType.Accompaniment]: '#84cc16',
+    [InterventionType.Other]: '#9ca3af',
+    [InterventionType.Reunion]: '#3b82f6',
+    [InterventionType.AssessmentInterview]: '#0ea5e9',
+    [InterventionType.ElaborarMemoria]: '#6b7280',
+    [InterventionType.ElaborarDocumento]: '#6b7280',
+    [InterventionType.Fiesta]: '#ec4899',
+    [InterventionType.Vacaciones]: '#facc15',
+    [InterventionType.Viaje]: '#06b6d4',
+    [InterventionType.CursoFormacion]: '#fb923c',
 };
 
 const statusStyles: Record<InterventionStatus, { dot: string, text: string, bg: string }> = {
@@ -215,6 +240,37 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         return { totalCases, pendingTasksCount, casesByStatus, recentlyUpdated, casesByCeas, maxCeasCount };
     }, [cases, professionals, generalTasks]);
     
+    const lastMonthStats = useMemo(() => {
+        const now = new Date();
+        const lastMonth = new Date();
+        lastMonth.setDate(now.getDate() - 30);
+        
+        const data: { name: string; total: number; [key: string]: any }[] = [];
+        const activeTypes = new Set<string>();
+
+        cases.forEach(c => {
+            const recentInterventions = c.interventions.filter(i => new Date(i.start) >= lastMonth);
+            if (recentInterventions.length > 0) {
+                const caseStats: any = { 
+                    name: c.name.split(' ')[0] + (c.nickname ? ` (${c.nickname})` : ''), 
+                    total: recentInterventions.length 
+                };
+                recentInterventions.forEach(i => {
+                    const type = i.interventionType;
+                    caseStats[type] = (caseStats[type] || 0) + 1;
+                    activeTypes.add(type);
+                });
+                data.push(caseStats);
+            }
+        });
+
+        // Sort by total interventions descending and take top 10
+        const sortedData = data.sort((a, b) => b.total - a.total).slice(0, 10);
+        const sortedTypes = Array.from(activeTypes).sort();
+
+        return { data: sortedData, types: sortedTypes };
+    }, [cases]);
+
     const todaysAgenda = useMemo(() => {
         const allInterventions = [
             ...cases.flatMap(c => c.interventions),
@@ -473,6 +529,44 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                             </div>
                         )}
                     </div>
+                    
+                    {lastMonthStats.data.length > 0 && (
+                        <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
+                            <div className="flex items-center gap-2 mb-4">
+                                <IoBarChartOutline className="text-teal-600 text-xl" />
+                                <h3 className="font-semibold text-slate-800">Actuaciones último mes (Top 10 Casos)</h3>
+                            </div>
+                            <div className="h-[300px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <RechartsBarChart
+                                        data={lastMonthStats.data}
+                                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                        <XAxis 
+                                            dataKey="name" 
+                                            tick={{ fontSize: 11 }} 
+                                            interval={0}
+                                            angle={-25}
+                                            textAnchor="end"
+                                            height={60}
+                                        />
+                                        <YAxis />
+                                        <Tooltip />
+                                        <Legend wrapperStyle={{ fontSize: '12px' }} />
+                                        {lastMonthStats.types.map((type, index) => (
+                                            <Bar 
+                                                key={type} 
+                                                dataKey={type} 
+                                                stackId="a" 
+                                                fill={interventionTypeHexColors[type] || '#9ca3af'} 
+                                            />
+                                        ))}
+                                    </RechartsBarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                    )}
                 </div>
                 
                 <div className="space-y-6">

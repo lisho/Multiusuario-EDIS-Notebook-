@@ -309,7 +309,8 @@ const InterventionManager: React.FC<InterventionManagerProps> = ({ allInterventi
         const newType = newTypeSelections[invalidType];
         if (!newType) return;
 
-        const interventionsToUpdate = inconsistentInterventionsGrouped[invalidType];
+        // FIX: Cast to Intervention[] or undefined to resolve "Property 'length' does not exist on type 'unknown'" error.
+        const interventionsToUpdate = inconsistentInterventionsGrouped[invalidType] as Intervention[] | undefined;
         
         if (!interventionsToUpdate) {
             return;
