@@ -226,22 +226,23 @@ const MyStatsDashboard: React.FC<MyStatsDashboardProps> = ({ cases, professional
                             <IoBarChartOutline className="text-teal-600 text-xl" />
                             <h3 className="font-semibold text-slate-800">Actuaciones último mes (Top 10 Casos)</h3>
                         </div>
-                        <div className="h-[400px] w-full">
+                        <div className="h-[500px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
                                 <RechartsBarChart
+                                    layout="vertical"
                                     data={lastMonthStats.data}
-                                    margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                                    margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
                                 >
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                    <XAxis 
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                    <XAxis type="number" />
+                                    <YAxis 
                                         dataKey="name" 
-                                        tick={{ fontSize: 12 }} 
+                                        type="category" 
+                                        width={150} 
+                                        tick={{ fontSize: 12 }}
                                         interval={0}
-                                        angle={-30}
-                                        textAnchor="end"
                                     />
-                                    <YAxis />
-                                    <Tooltip />
+                                    <Tooltip cursor={{fill: 'transparent'}} />
                                     <Legend wrapperStyle={{ paddingTop: '20px' }} />
                                     {lastMonthStats.types.map((type, index) => (
                                         <Bar 

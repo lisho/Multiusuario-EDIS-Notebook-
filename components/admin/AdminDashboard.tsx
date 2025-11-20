@@ -5,7 +5,7 @@ import ProfessionalEditorModal from './ProfessionalEditorModal';
 import CsvImportModal from './CsvImportModal';
 import InterventionManager from './InterventionManager';
 import NewEventModal from '../NewEventModal';
-import AdminStatsDashboard from './AdminStatsDashboard';
+import { AdminStatsDashboard } from './AdminStatsDashboard';
 import { IoAddOutline, IoPencilOutline, IoTrashOutline, IoPeopleOutline, IoConstructOutline, IoBriefcaseOutline, IoChevronDownOutline, IoCloudUploadOutline, IoCalendarOutline, IoBarChartOutline } from 'react-icons/io5';
 
 interface AdminDashboardProps {
