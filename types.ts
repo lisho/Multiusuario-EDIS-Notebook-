@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export interface User {
@@ -31,6 +32,8 @@ export enum FieldType {
     Checkbox = 'Checkbox',
     Select = 'Selección',
 }
+
+export type AutoFillSource = 'name' | 'nickname' | 'dni' | 'phone' | 'email' | 'address';
 
 export enum InterventionType {
     // Case-specific types
@@ -95,6 +98,7 @@ export interface ToolField {
     type: FieldType;
     placeholder?: string;
     options?: string[];
+    autoFillSource?: AutoFillSource;
 }
 
 export interface AdminTool {
@@ -103,6 +107,7 @@ export interface AdminTool {
     description: string;
     moment: InterventionMoment;
     fields: ToolField[];
+    documentTemplate?: string;
 }
 
 export interface Intervention {

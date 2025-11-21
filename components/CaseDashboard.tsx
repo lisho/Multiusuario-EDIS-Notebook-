@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { Intervention, Case, CaseStatus, Task, InterventionType, AdminTool, InterventionMoment, InterventionRecord, InterventionStatus, Professional, DashboardView, User } from '../types';
 import NewEventModal from './NewEventModal';
@@ -17,7 +18,7 @@ import {
     IoHomeOutline, 
     IoBeakerOutline, 
     IoMapOutline,
-    IoBriefcaseOutline,
+    IoBriefcaseOutline, 
     IoBookOutline, 
     IoCheckboxOutline, 
     IoStatsChartOutline, 
@@ -53,6 +54,7 @@ interface CaseDashboardProps {
     onUpdateCase: (updatedCase: Case) => void;
     onUpdateTask: (caseId: string, updatedTask: Task) => void;
     onDeleteCase: (caseId: string) => void;
+    // FIX: Changed `assignedTo` type from `string` to `string[]` to match the implementation in `App.tsx` and `TasksView.tsx`.
     onAddTask: (caseId: string, taskText: string, assignedTo?: string[]) => void;
     onToggleTask: (caseId: string, taskId: string) => void;
     onDeleteTask: (caseId: string, taskId: string) => void;
@@ -207,7 +209,13 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
         const interventionRecords = caseData.interventionRecords || [];
         switch (activeView) {
             case 'profile':
-                return <ProfileView caseData={caseData} onUpdateCase={onUpdateCase} onDeleteCase={onDeleteCase} onOpenGenogramViewer={onOpenGenogramViewer} requestConfirmation={requestConfirmation} />;
+                return <ProfileView 
+                            caseData={caseData} 
+                            onUpdateCase={onUpdateCase} 
+                            onDeleteCase={onDeleteCase} 
+                            onOpenGenogramViewer={onOpenGenogramViewer} 
+                            requestConfirmation={requestConfirmation}
+                        />;
             case 'referral':
                 return <InterventionMomentView 
                             moment={InterventionMoment.Referral}
@@ -482,6 +490,7 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                     onSave={handleSaveRecord}
                     tool={toolRunnerState.tool}
                     initialAnswers={toolRunnerState.recordToEdit?.answers}
+                    caseData={caseData}
                 />
             )}
              <AiExplorationSidePanel 
