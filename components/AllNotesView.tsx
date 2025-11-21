@@ -99,7 +99,7 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({ cases, generalTasks, onBack
     };
 
     return (
-        <div className="container mx-auto px-4 py-8 min-h-screen">
+        <div className="container mx-auto px-4 py-8 min-h-screen pb-24">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
                 <div className="flex items-center gap-4">
                     <button onClick={onBack} className="p-2 rounded-full bg-white shadow-sm hover:bg-slate-100 text-slate-600 transition-colors">
@@ -107,13 +107,6 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({ cases, generalTasks, onBack
                     </button>
                     <h2 className="text-3xl font-bold text-slate-800">Mis Notas y Tareas</h2>
                 </div>
-                <button
-                    onClick={() => handleOpenModal(null)}
-                    className="bg-teal-600 text-white px-5 py-2.5 rounded-lg hover:bg-teal-700 font-semibold flex items-center gap-2 shadow-md transition-all hover:scale-105"
-                >
-                    <IoAddOutline className="text-2xl" />
-                    Añadir Nota
-                </button>
             </div>
 
             {groups.length === 0 ? (
@@ -174,6 +167,15 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({ cases, generalTasks, onBack
                     ))}
                 </div>
             )}
+
+            {/* Floating Action Button */}
+            <button
+                onClick={() => handleOpenModal(null)}
+                className="fixed bottom-8 right-8 z-50 bg-teal-600 text-white px-6 py-3 rounded-full hover:bg-teal-700 font-semibold flex items-center gap-2 shadow-xl transition-all hover:scale-105 hover:shadow-2xl"
+            >
+                <IoAddOutline className="text-2xl" />
+                <span className="hidden sm:inline">Añadir Nota</span>
+            </button>
 
             <UnifiedNoteModal
                 isOpen={isModalOpen}

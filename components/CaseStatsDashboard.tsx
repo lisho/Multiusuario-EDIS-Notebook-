@@ -304,9 +304,14 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                         const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
                                         const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
                                         const currentStatusStyle = statusStyles[event.status];
+                                        const isMenuOpen = openMenuId === event.id;
                                         
                                         return (
-                                            <AnimatedLi key={event.id} delay={index * 100} className={`p-3 rounded-lg border flex flex-col gap-3 transition-colors shadow-sm ${event.status === InterventionStatus.Cancelled ? 'bg-slate-50 opacity-70' : 'bg-white'}`}>
+                                            <AnimatedLi 
+                                                key={event.id} 
+                                                delay={index * 100} 
+                                                className={`p-3 rounded-lg border flex flex-col gap-3 transition-colors shadow-sm ${event.status === InterventionStatus.Cancelled ? 'bg-slate-50 opacity-70' : 'bg-white'} ${isMenuOpen ? 'relative z-20' : ''}`}
+                                            >
                                                 <div className="flex items-start gap-4">
                                                     <div className="flex flex-col items-center flex-shrink-0 w-16 text-center">
                                                         <p className={`font-bold text-slate-700 ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`}>
