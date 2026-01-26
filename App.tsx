@@ -20,7 +20,7 @@ import AllNotesView from './components/AllNotesView';
 import { UnifiedItemData } from './components/UnifiedNoteModal';
 import { Case, CaseStatus, Task, AdminTool, Intervention, InterventionRecord, Professional, DashboardView, MyNote, User, ProfessionalRole } from './types';
 import { db, auth } from './services/firebase';
-import { signInAnonymously } from 'firebase/auth';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { collection, query, getDocs, addDoc, doc, updateDoc, deleteDoc, writeBatch, setDoc } from 'firebase/firestore';
 import { IoAddOutline, IoCloseCircleOutline, IoSearchOutline, IoChevronDownOutline, IoWarningOutline, IoCloseOutline } from 'react-icons/io5';
 import { BsPinAngleFill } from 'react-icons/bs';
@@ -139,18 +139,10 @@ const App: React.FC = () => {
     };
 
     useEffect(() => {
-        // Authenticate with Firebase anonymously to allow Storage operations.
-        // This is necessary because the default storage rules require authentication.
-        signInAnonymously(auth).catch(error => {
-            console.error("Firebase Anonymous sign-in failed:", error);
-             if (error.code === 'auth/configuration-not-found') {
-                setAuthError('Autenticación anónima deshabilitada. Ve a Firebase Console > Authentication > Sign-in method y habilita "Anónimo". Sin esto, la subida de imágenes y otras funciones fallarán.');
-            } else {
-                setAuthError(`Error de autenticación de Firebase: ${error.message}`);
-            }
-        });
+        let isMounted = true;
 
         const fetchData = async () => {
+            if (!isMounted) return;
             setIsLoading(true);
             try {
                 const professionalsSnapshot = await getDocs(collection(db, "professionals"));
@@ -180,7 +172,7 @@ const App: React.FC = () => {
                     
                     return prof;
                 }) as Professional[];
-                setProfessionals(professionalsList);
+                if (isMounted) setProfessionals(professionalsList);
     
                 const lisho = professionalsList.find(p => p.name === 'Lisho');
                 if (!lisho) {
@@ -235,11 +227,11 @@ const App: React.FC = () => {
                     }
                     return caseData;
                 });
-                setCases(casesList.sort(caseSorter));
+                if (isMounted) setCases(casesList.sort(caseSorter));
 
                 const toolsSnapshot = await getDocs(collection(db, "adminTools"));
                 const toolsList = toolsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AdminTool[];
-                setAdminTools(toolsList);
+                if (isMounted) setAdminTools(toolsList);
                 
                 const generalInterventionsSnapshot = await getDocs(collection(db, "generalInterventions"));
                 const generalInterventionsList = generalInterventionsSnapshot.docs.map(doc => ({
@@ -247,7 +239,7 @@ const App: React.FC = () => {
                     ...doc.data(),
                     createdBy: doc.data().createdBy || lishoId,
                 })) as Intervention[];
-                setGeneralInterventions(generalInterventionsList);
+                if (isMounted) setGeneralInterventions(generalInterventionsList);
                 
                 const generalTasksSnapshot = await getDocs(collection(db, "generalTasks"));
                 const generalTasksList = generalTasksSnapshot.docs.map(doc => ({
@@ -255,16 +247,42 @@ const App: React.FC = () => {
                     ...doc.data(),
                     createdBy: doc.data().createdBy || lishoId,
                 })) as Task[];
-                setGeneralTasks(generalTasksList);
+                if (isMounted) setGeneralTasks(generalTasksList);
 
-            } catch (error) {
+            } catch (error: any) {
                 console.error("Error fetching data from Firestore: ", error);
+                if (isMounted) {
+                    if (error.code === 'permission-denied') {
+                        setAuthError("Permisos insuficientes. Asegúrate de que las reglas de seguridad de Firestore permitan lectura/escritura (o que la autenticación anónima esté habilitada y funcionando).");
+                    }
+                }
             } finally {
-                setIsLoading(false);
+                if (isMounted) setIsLoading(false);
             }
         };
 
-        fetchData();
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                fetchData();
+            } else {
+                signInAnonymously(auth).catch(error => {
+                    console.error("Firebase Anonymous sign-in failed:", error);
+                     if (isMounted) {
+                        if (error.code === 'auth/configuration-not-found') {
+                            setAuthError('Autenticación anónima deshabilitada. Ve a Firebase Console > Authentication > Sign-in method y habilita "Anónimo". Sin esto, la subida de imágenes y otras funciones fallarán.');
+                        } else {
+                            setAuthError(`Error de autenticación de Firebase: ${error.message}`);
+                        }
+                        setIsLoading(false);
+                     }
+                });
+            }
+        });
+
+        return () => {
+            isMounted = false;
+            unsubscribe();
+        };
     }, []);
 
     const visibleCases = useMemo(() => {
