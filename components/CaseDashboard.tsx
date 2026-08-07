@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Intervention, Case, CaseStatus, Task, InterventionType, AdminTool, InterventionMoment, InterventionRecord, InterventionStatus, Professional, DashboardView, User } from '../types';
 import NewEventModal from './NewEventModal';
 import AiInsightModal from './AiInsightModal';
@@ -30,7 +30,8 @@ import {
     IoAddOutline,
     IoWalkOutline,
     IoJournalOutline,
-    IoFileTrayFullOutline
+    IoFileTrayFullOutline,
+    IoWarningOutline
 } from 'react-icons/io5';
 
 type DiagnosisTab = 'tools' | 'relational';
@@ -64,6 +65,7 @@ interface CaseDashboardProps {
     onSaveInterventionRecord: (caseId: string, record: InterventionRecord) => void;
     onDeleteInterventionRecord: (caseId: string, recordId: string) => void;
     onSaveIntervention: (intervention: Omit<Intervention, 'id'> | Intervention) => void;
+    onBulkSaveInterventions: (interventions: Intervention[]) => void;
     onDeleteIntervention: (intervention: Intervention) => void;
     isSidebarCollapsed: boolean;
     onToggleSidebar: () => void;
@@ -175,6 +177,13 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
         setToolRunnerState(null);
     };
     
+    const expiredInterventionsCount = useMemo(() => {
+        return caseData.interventions.filter(i => 
+            i.status === InterventionStatus.Planned && 
+            new Date(i.end) < new Date()
+        ).length;
+    }, [caseData.interventions]);
+
     const handleViewChange = (view: DashboardView) => {
         if (view === 'diagnosis' && activeView !== 'diagnosis') {
             setDiagnosisTab('relational');
@@ -215,6 +224,7 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                             onDeleteCase={onDeleteCase} 
                             onOpenGenogramViewer={onOpenGenogramViewer} 
                             requestConfirmation={requestConfirmation}
+                            onSaveIntervention={props.onSaveIntervention as (intervention: Intervention) => void}
                         />;
             case 'referral':
                 return <InterventionMomentView 
@@ -319,10 +329,13 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                 />;
             case 'notebook':
                 return <TimelineNotebookView 
+                            caseId={caseData.id}
                             interventions={caseData.interventions} 
                             onEditIntervention={handleOpenEditIntervention} 
                             onDeleteIntervention={props.onDeleteIntervention}
                             requestConfirmation={requestConfirmation}
+                            onSaveIntervention={props.onSaveIntervention}
+                            onBulkSaveInterventions={props.onBulkSaveInterventions}
                         />;
             case 'myNotes':
                 return <MyNotesView caseData={caseData} onUpdateCase={onUpdateCase} requestConfirmation={requestConfirmation} currentUser={currentUser} />;
@@ -416,7 +429,7 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                                     {caseData.name}
                                     {caseData.nickname && <strong className="ml-3 text-slate-600">({caseData.nickname})</strong>}
                                 </h2>
-                                <div className="mt-2">
+                                <div className="mt-2 flex items-center gap-3">
                                     <select
                                         value={caseData.status}
                                         onChange={(e) => handleStatusChange(e.target.value as CaseStatus)}
@@ -426,6 +439,16 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                                             <option key={status} value={status}>{status}</option>
                                         ))}
                                     </select>
+                                    {expiredInterventionsCount > 0 && (
+                                        <button 
+                                            onClick={() => setActiveView('profile')}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold hover:bg-amber-100 transition-colors animate-pulse"
+                                            title="Ver intervenciones caducadas"
+                                        >
+                                            <IoWarningOutline className="text-sm" />
+                                            <span>{expiredInterventionsCount} Caducadas</span>
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>

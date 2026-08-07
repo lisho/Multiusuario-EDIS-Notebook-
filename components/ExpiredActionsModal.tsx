@@ -1,6 +1,6 @@
 import React from 'react';
-import { Intervention, Case } from '../types';
-import { IoCloseOutline, IoAlertCircleOutline, IoPencilOutline, IoArrowForwardCircleOutline } from 'react-icons/io5';
+import { Intervention, Case, InterventionStatus } from '../types';
+import { IoCloseOutline, IoAlertCircleOutline, IoPencilOutline, IoArrowForwardCircleOutline, IoBookOutline, IoTrashOutline } from 'react-icons/io5';
 
 interface ExpiredActionsModalProps {
   isOpen: boolean;
@@ -9,9 +9,15 @@ interface ExpiredActionsModalProps {
   cases: Case[];
   onSelectCaseById: (caseId: string) => void;
   onEditIntervention: (intervention: Intervention) => void;
+  onSaveIntervention: (intervention: Intervention) => void;
+  onDeleteIntervention: (intervention: Intervention) => void;
+  requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
 }
 
-const ExpiredActionsModal: React.FC<ExpiredActionsModalProps> = ({ isOpen, onClose, interventions, cases, onSelectCaseById, onEditIntervention }) => {
+const ExpiredActionsModal: React.FC<ExpiredActionsModalProps> = ({ 
+    isOpen, onClose, interventions, cases, onSelectCaseById, 
+    onEditIntervention, onSaveIntervention, onDeleteIntervention, requestConfirmation 
+}) => {
     if (!isOpen) return null;
 
     const getCaseName = (caseId: string | null) => {
@@ -36,14 +42,32 @@ const ExpiredActionsModal: React.FC<ExpiredActionsModalProps> = ({ isOpen, onClo
         onClose();
     };
 
+    const handleDelete = (intervention: Intervention) => {
+        requestConfirmation(
+            'Eliminar Intervención',
+            '¿Estás seguro de que quieres eliminar esta intervención caducada? Esta acción es irreversible.',
+            () => {
+                onDeleteIntervention(intervention);
+            }
+        );
+    };
+
     const handleGoToCase = (caseId: string) => {
         onSelectCaseById(caseId);
         onClose();
     };
 
+    const handleStatusChange = (event: Intervention, newStatus: InterventionStatus) => {
+        onSaveIntervention({ ...event, status: newStatus });
+    };
+
+    const handleIsRegisteredChange = (event: Intervention, isRegistered: boolean) => {
+        onSaveIntervention({ ...event, isRegistered });
+    };
+
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
                 <div className="flex justify-between items-center p-4 border-b border-slate-200">
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                         <IoAlertCircleOutline className="text-red-600"/>
@@ -58,30 +82,65 @@ const ExpiredActionsModal: React.FC<ExpiredActionsModalProps> = ({ isOpen, onClo
                     {interventions.length > 0 ? (
                         <ul className="space-y-3">
                             {interventions.map(event => (
-                                <li key={event.id} className="bg-slate-50 p-3 rounded-md border border-slate-200 flex justify-between items-center gap-2">
+                                <li key={event.id} className="bg-slate-50 p-3 rounded-md border border-slate-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                                     <div className="flex-grow min-w-0">
                                         <p className="font-semibold text-slate-800 truncate" title={event.title}>{event.title}</p>
                                         <p className="text-sm text-slate-500">
                                             {getCaseName(event.caseId)} - <span className="font-medium">{timeAgo(event.start)}</span>
                                         </p>
                                     </div>
-                                    <div className="flex-shrink-0 flex items-center gap-2">
-                                        {event.caseId && (
-                                            <button 
-                                                onClick={() => handleGoToCase(event.caseId!)}
-                                                className="text-slate-500 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-200 transition-colors"
-                                                title="Ir al caso"
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-shrink-0">
+                                        <div className="flex items-center gap-3 bg-white p-1.5 rounded-md border border-slate-200 shadow-sm">
+                                            <select
+                                                value={event.status}
+                                                onChange={(e) => handleStatusChange(event, e.target.value as InterventionStatus)}
+                                                className={`text-sm rounded border-slate-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 py-1 pl-2 pr-8 ${
+                                                    event.status === InterventionStatus.Completed ? 'bg-green-50 text-green-700 border-green-200' :
+                                                    event.status === InterventionStatus.Cancelled ? 'bg-red-50 text-red-700 border-red-200' :
+                                                    'bg-amber-50 text-amber-700 border-amber-200'
+                                                }`}
                                             >
-                                                <IoArrowForwardCircleOutline className="text-lg"/>
+                                                {Object.values(InterventionStatus).map(status => (
+                                                    <option key={status} value={status}>{status}</option>
+                                                ))}
+                                            </select>
+                                            
+                                            <label className="flex items-center gap-1.5 cursor-pointer text-sm text-slate-600 hover:text-slate-800 pr-2" title="Guardar en el cuaderno de campo">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={event.isRegistered}
+                                                    onChange={(e) => handleIsRegisteredChange(event, e.target.checked)}
+                                                    className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                />
+                                                <IoBookOutline className={`text-lg ${event.isRegistered ? "text-teal-600" : "text-slate-400"}`} />
+                                            </label>
+                                        </div>
+
+                                        <div className="flex items-center gap-1">
+                                            {event.caseId && (
+                                                <button 
+                                                    onClick={() => handleGoToCase(event.caseId!)}
+                                                    className="text-slate-500 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-200 transition-colors"
+                                                    title="Ir al caso"
+                                                >
+                                                    <IoArrowForwardCircleOutline className="text-lg"/>
+                                                </button>
+                                            )}
+                                            <button 
+                                                onClick={() => handleEdit(event)}
+                                                className="text-slate-500 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-200 transition-colors"
+                                                title="Editar intervención"
+                                            >
+                                                <IoPencilOutline className="text-lg"/>
                                             </button>
-                                        )}
-                                        <button 
-                                            onClick={() => handleEdit(event)}
-                                            className="text-slate-500 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-200 transition-colors"
-                                            title="Editar intervención"
-                                        >
-                                            <IoPencilOutline className="text-lg"/>
-                                        </button>
+                                            <button 
+                                                onClick={() => handleDelete(event)}
+                                                className="text-slate-500 hover:text-red-600 p-1.5 rounded-full hover:bg-red-50 transition-colors ml-1"
+                                                title="Eliminar intervención"
+                                            >
+                                                <IoTrashOutline className="text-lg"/>
+                                            </button>
+                                        </div>
                                     </div>
                                 </li>
                             ))}

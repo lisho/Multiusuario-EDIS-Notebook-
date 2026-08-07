@@ -88,7 +88,7 @@ const MyStatsDashboard: React.FC<MyStatsDashboardProps> = ({ cases, professional
             .filter(item => item.count > 0)
             .sort((a, b) => statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status));
 
-        const ceasCounts: { [key: string]: number } = {};
+        const ceasCounts: { [key: string]: { total: number, statuses: { [status: string]: number } } } = {};
         const professionalMap = new Map(professionals.map(p => [p.id, p]));
 
         activeCases.forEach(c => {
@@ -97,11 +97,15 @@ const MyStatsDashboard: React.FC<MyStatsDashboardProps> = ({ cases, professional
                 .find(p => p?.role === ProfessionalRole.SocialWorker);
             
             const ceasName = socialWorker?.ceas || 'Sin CEAS Asignado';
-            ceasCounts[ceasName] = (ceasCounts[ceasName] || 0) + 1;
+            if (!ceasCounts[ceasName]) {
+                ceasCounts[ceasName] = { total: 0, statuses: {} };
+            }
+            ceasCounts[ceasName].total++;
+            ceasCounts[ceasName].statuses[c.status] = (ceasCounts[ceasName].statuses[c.status] || 0) + 1;
         });
 
         const casesByCeas = Object.entries(ceasCounts)
-            .map(([ceas, count]) => ({ ceas, count }))
+            .map(([ceas, data]) => ({ ceas, count: data.total, statuses: data.statuses }))
             .sort((a, b) => b.count - a.count);
         
         const maxCeasCount = casesByCeas.reduce((max, item) => Math.max(max, item.count), 0);
@@ -198,7 +202,7 @@ const MyStatsDashboard: React.FC<MyStatsDashboardProps> = ({ cases, professional
                         <h3 className="font-semibold text-slate-800">Casos por CEAS</h3>
                     </div>
                     <ul className="space-y-4 text-sm">
-                        {stats.casesByCeas.map(({ ceas, count }) => {
+                        {stats.casesByCeas.map(({ ceas, count, statuses }) => {
                             const barWidth = stats.maxCeasCount > 0 ? (count / stats.maxCeasCount) * 100 : 0;
                             return (
                                 <li key={ceas}>
@@ -206,12 +210,20 @@ const MyStatsDashboard: React.FC<MyStatsDashboardProps> = ({ cases, professional
                                         <span className="font-medium text-slate-700 truncate pr-2">{ceas}</span>
                                         <span className="font-bold text-slate-800">{count}</span>
                                     </div>
-                                    <div className="w-full bg-slate-100 rounded-full h-3">
-                                        <div
-                                            className="bg-teal-500 h-3 rounded-full transition-all duration-500"
-                                            style={{ width: `${barWidth}%` }}
-                                            title={`${count} caso(s)`}
-                                        ></div>
+                                    <div className="w-full bg-slate-100 rounded-full h-3 flex overflow-hidden">
+                                        <div className="h-full flex transition-all duration-500" style={{ width: `${barWidth}%` }}>
+                                            {Object.entries(statuses).map(([status, statusCount]) => {
+                                                const segmentWidth = (statusCount / count) * 100;
+                                                return (
+                                                    <div
+                                                        key={status}
+                                                        className="h-full"
+                                                        style={{ width: `${segmentWidth}%`, backgroundColor: getStatusHexColor(status as CaseStatus) }}
+                                                        title={`${status}: ${statusCount} caso(s)`}
+                                                    ></div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 </li>
                             );

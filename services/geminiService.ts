@@ -29,6 +29,40 @@ const responseSchema = {
     required: ["summary", "key_themes", "recommendations"],
 };
 
+export const createCaseInsightChat = (interventions: Intervention[], initialInsight: any): Chat => {
+    const formattedEntries = interventions
+        .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+        .map(entry => `
+Fecha: ${new Date(entry.start).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}
+Tipo: ${entry.interventionType}
+Título: ${entry.title}
+Notas: ${entry.notes || 'Ninguna'}
+        `)
+        .join('\n---\n');
+
+    const systemInstruction = `Eres un supervisor experto en trabajo social y analista de casos. 
+Te basarás en las siguientes intervenciones registradas en el cuaderno de campo de un caso:
+
+---
+${formattedEntries}
+---
+
+Ya has generado un análisis inicial con este resumen:
+Resumen: ${initialInsight.summary}
+Temas clave: ${initialInsight.key_themes.join(', ')}
+Recomendaciones: ${initialInsight.recommendations.join(', ')}
+
+Ahora actuarás como un asistente conversacional para ayudar al trabajador social a profundizar en este caso, responder preguntas, aclarar el análisis inicial, o ajustar sugerencias.
+Sé empático, profesional, claro y basado EXCLUSIVAMENTE en la información proporcionada. Responde en español y en formato Markdown limpio.`;
+
+    return ai.chats.create({
+        model: 'gemini-3.5-flash',
+        config: {
+            systemInstruction: systemInstruction,
+        }
+    });
+};
+
 export const generateCaseSummary = async (interventions: Intervention[]): Promise<{ summary: string; key_themes: string[]; recommendations: string[] }> => {
     
     const formattedEntries = interventions
@@ -63,7 +97,7 @@ ${formattedEntries}
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.5-flash',
             contents: prompt,
             config: {
                 responseMimeType: 'application/json',
@@ -127,7 +161,7 @@ export const createExplorationChat = (caseData: Case, moment: InterventionMoment
     const caseContext = getCaseContext(caseData);
 
     const chat = ai.chats.create({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.5-flash',
         config: {
             systemInstruction: systemInstruction,
         },
@@ -192,7 +226,7 @@ Ejemplo de respuesta para las cabeceras ['Asunto', 'Fecha', 'Detalles', 'ID Caso
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.5-flash',
             contents: prompt,
             config: {
                 responseMimeType: 'application/json',
@@ -204,5 +238,70 @@ Ejemplo de respuesta para las cabeceras ['Asunto', 'Fecha', 'Detalles', 'ID Caso
     } catch (error) {
         console.error('Error mapping CSV headers with Gemini API:', error);
         throw new Error('Failed to get AI-powered column mapping.');
+    }
+};
+
+const pdfExtractionSchema = {
+    type: Type.ARRAY,
+    items: {
+        type: Type.OBJECT,
+        properties: {
+            title: { type: Type.STRING, description: 'Título o resumen de la actuación' },
+            start: { type: Type.STRING, description: 'Fecha y hora de inicio en formato ISO 8601 (ej. 2024-08-15T10:30:00Z)' },
+            end: { type: Type.STRING, description: 'Fecha y hora de fin en formato ISO 8601. Si no se especifica, usa la misma que start.' },
+            interventionType: { type: Type.STRING, description: 'Tipo de actuación (ej. Reunión, Visita Domiciliaria, Llamada Telefónica)' },
+            notes: { type: Type.STRING, description: 'Notas, detalles o descripción de la actuación' },
+            caseId: { type: Type.STRING, description: 'Nombre de la persona o caso asociado, si se menciona' },
+            isAllDay: { type: Type.BOOLEAN, description: 'True si es un evento de todo el día o no se especifica hora' },
+            isRegistered: { type: Type.BOOLEAN, description: 'Siempre true' }
+        },
+        required: ["title", "start", "interventionType"]
+    }
+};
+
+export const extractEventsFromPdf = async (base64Pdf: string): Promise<any[]> => {
+    const prompt = `
+Eres un asistente experto en extracción de datos. Tu tarea es analizar el documento PDF adjunto, que contiene un registro de actuaciones, citas o intervenciones de trabajo social.
+Extrae cada evento individual y devuélvelo como un array de objetos JSON.
+
+Para cada evento, intenta extraer la siguiente información:
+- title: Un título breve y descriptivo.
+- start: La fecha y hora de inicio en formato ISO 8601. Si solo hay fecha, asume que es a las 00:00:00 y marca isAllDay como true.
+- end: La fecha y hora de fin en formato ISO 8601. Si no hay, usa la misma que 'start'.
+- interventionType: El tipo de intervención (ej. Reunión, Visita Domiciliaria, Llamada Telefónica, Coordinación, Gestión Administrativa). Si no está claro, usa 'Otro'.
+- notes: Cualquier detalle adicional, descripción o resumen de la actuación.
+- caseId: El nombre de la persona, titular o caso al que se refiere la actuación, si se menciona.
+- isAllDay: true si no se especifica una hora concreta, false si hay una hora de inicio.
+- isRegistered: Siempre true.
+
+Asegúrate de extraer TODOS los eventos presentes en el documento.
+`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3.5-flash',
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            data: base64Pdf.split(',')[1] || base64Pdf, // Remove data URI prefix if present
+                            mimeType: 'application/pdf'
+                        }
+                    },
+                    { text: prompt }
+                ]
+            },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: pdfExtractionSchema,
+                temperature: 0.2,
+            }
+        });
+        
+        const jsonText = response.text?.trim() || '[]';
+        return JSON.parse(jsonText);
+    } catch (error) {
+        console.error('Error extracting events from PDF with Gemini API:', error);
+        throw new Error('No se pudieron extraer los eventos del PDF utilizando la IA.');
     }
 };

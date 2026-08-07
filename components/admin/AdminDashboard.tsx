@@ -245,13 +245,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                                     <IoCloudUploadOutline />
                                     Importación Masiva
                                 </h2>
-                                <p className="text-sm text-slate-600 mt-1">Carga eventos en el calendario de forma masiva desde un archivo CSV con ayuda de la IA.</p>
+                                <p className="text-sm text-slate-600 mt-1">Carga eventos en el calendario de forma masiva desde un archivo CSV, JSON o PDF con ayuda de la IA.</p>
                                 <div className="mt-4 pt-4 border-t border-slate-200">
                                     <button
                                         onClick={() => setIsCsvImportModalOpen(true)}
                                         className="w-full bg-teal-50 text-teal-700 h-10 rounded-lg hover:bg-teal-100 font-semibold flex items-center justify-center gap-2 transition-colors border border-teal-200"
                                     >
-                                        Importar Eventos desde CSV
+                                        Importar Eventos (CSV / JSON / PDF)
                                     </button>
                                 </div>
                             </div>
@@ -335,8 +335,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                     />
                 )}
             </div>
+        </div>
         
-            <TemplateEditor 
+        <TemplateEditor 
                 isOpen={isEditorOpen}
                 onClose={() => setIsEditorOpen(false)}
                 onSave={handleSaveAndClose}

@@ -180,7 +180,7 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
     
     const todaysAgenda = useMemo(() => {
         const allInterventions = [
-            ...cases.flatMap(c => c.interventions),
+            ...cases.flatMap(c => c.interventions || []),
             ...generalInterventions
         ];
         
@@ -199,7 +199,7 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
 
     const expiredActions = useMemo(() => {
         const allInterventions = [
-            ...cases.flatMap(c => c.interventions),
+            ...cases.flatMap(c => c.interventions || []),
             ...generalInterventions
         ];
         const twentyFiveHoursAgo = new Date().getTime() - (25 * 60 * 60 * 1000);
@@ -506,6 +506,9 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                 cases={cases}
                 onSelectCaseById={onSelectCaseById}
                 onEditIntervention={handleOpenEditModal}
+                onSaveIntervention={onSaveIntervention}
+                onDeleteIntervention={onDeleteIntervention}
+                requestConfirmation={requestConfirmation}
             />
             <MissingProfessionalsModal
                 isOpen={isMissingProfsModalOpen}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Case } from '../types';
+import { Case, InterventionStatus, InterventionType, Intervention } from '../types';
 import { 
     IoInformationCircleOutline, 
     IoSaveOutline, 
@@ -20,9 +20,11 @@ interface ProfileViewProps {
   onDeleteCase: (caseId: string) => void;
   onOpenGenogramViewer: (url: string) => void;
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
+  onSaveIntervention?: (intervention: Intervention) => void;
 }
 
 const getCaseFormData = (caseData: Case) => ({
+    name: caseData.name || '',
     nickname: caseData.nickname || '',
     dni: caseData.dni || '',
     phone: caseData.phone || '',
@@ -88,7 +90,7 @@ const StatItem: React.FC<{ icon: React.ComponentType<{ className?: string }>; la
     </div>
   );
 
-const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDeleteCase, onOpenGenogramViewer, requestConfirmation }) => {
+const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDeleteCase, onOpenGenogramViewer, requestConfirmation, onSaveIntervention }) => {
   const [formData, setFormData] = useState(getCaseFormData(caseData));
   const [errors, setErrors] = useState<{ email?: string }>({});
   const [isDirty, setIsDirty] = useState(false);
@@ -105,6 +107,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
     const pendingTasks = caseData.tasks.filter(t => !t.completed).length;
     const completedTasks = caseData.tasks.filter(t => t.completed).length;
     
+    const expiredInterventions = caseData.interventions.filter(i => 
+        i.status === InterventionStatus.Planned && 
+        new Date(i.end) < new Date()
+    );
+    
     let daysInProgram: string | number = 'N/A';
     if (caseData.interventions.length > 0) {
         const firstInterventionDate = new Date(caseData.interventions.reduce((earliest, current) => {
@@ -116,7 +123,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
         daysInProgram = diffDays >= 0 ? diffDays : 0;
     }
 
-    return { totalInterventions, pendingTasks, completedTasks, daysInProgram };
+    return { totalInterventions, pendingTasks, completedTasks, daysInProgram, expiredCount: expiredInterventions.length, expiredInterventions };
   }, [caseData]);
   
   useEffect(() => {
@@ -279,11 +286,65 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
             <StatItem icon={IoStatsChartOutline} label="Intervenciones" value={stats.totalInterventions} />
             <StatItem icon={IoCheckboxOutline} label="Tareas Pendientes" value={stats.pendingTasks} />
             <StatItem icon={IoCheckmarkDoneCircleOutline} label="Tareas Completadas" value={stats.completedTasks} />
-            <StatItem icon={IoTimeOutline} label="Días en programa" value={stats.daysInProgram} />
+            <StatItem icon={stats.expiredCount > 0 ? IoWarningOutline : IoTimeOutline} label={stats.expiredCount > 0 ? "Caducadas" : "Días en programa"} value={stats.expiredCount > 0 ? stats.expiredCount : stats.daysInProgram} />
         </div>
+
+        {stats.expiredCount > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-amber-100 rounded-full text-amber-600">
+                        <IoWarningOutline className="text-xl" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-amber-900">Intervenciones Caducadas</h3>
+                        <p className="text-sm text-amber-700">Tienes {stats.expiredCount} intervenciones planificadas que ya han pasado su fecha de fin.</p>
+                    </div>
+                </div>
+                <div className="space-y-3">
+                    {stats.expiredInterventions.map(intervention => (
+                        <div key={intervention.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-3 rounded-md border border-amber-100 shadow-sm gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0"></div>
+                                <div>
+                                    <p className="text-sm font-bold text-slate-800">{intervention.title}</p>
+                                    <p className="text-xs font-medium text-red-600">
+                                        Caducó el {new Date(intervention.end).toLocaleDateString()}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <select
+                                    value={intervention.status}
+                                    onChange={(e) => onSaveIntervention?.({ ...intervention, status: e.target.value as InterventionStatus })}
+                                    className="text-xs border border-slate-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-teal-500 bg-white"
+                                >
+                                    {Object.values(InterventionStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                                <select
+                                    value={intervention.interventionType}
+                                    onChange={(e) => onSaveIntervention?.({ ...intervention, interventionType: e.target.value as InterventionType })}
+                                    className="text-xs border border-slate-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-teal-500 bg-white"
+                                >
+                                    {Object.values(InterventionType).map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => onSaveIntervention?.({ ...intervention, isRegistered: !intervention.isRegistered })}
+                                    className={`text-xs px-2 py-1.5 rounded border font-medium transition-colors ${intervention.isRegistered ? 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                                >
+                                    {intervention.isRegistered ? 'En Cuaderno' : '+ Cuaderno'}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 space-y-6">
             <div>
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                    <InputField name="name" label="Nombre Completo (Titular)" value={formData.name} placeholder="Nombre y apellidos" required className="sm:col-span-2" onChange={handleChange} />
                     <InputField name="nickname" label="Apodo" value={formData.nickname} placeholder="Cómo prefiere que le llamen" className="sm:col-span-2" onChange={handleChange} />
                     <InputField name="dni" label="DNI / Documento" value={formData.dni} placeholder="12345678X" required onChange={handleChange} />
                     <InputField name="phone" label="Teléfono" value={formData.phone} placeholder="600 123 456" required onChange={handleChange} />

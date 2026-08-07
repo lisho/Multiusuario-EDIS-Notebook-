@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { Case, Intervention, InterventionStatus, InterventionType } from '../../types';
-import { mapCsvHeaders } from '../../services/geminiService';
+import { mapCsvHeaders, extractEventsFromPdf } from '../../services/geminiService';
 import { IoCloseOutline, IoCloudUploadOutline, IoDocumentTextOutline, IoArrowForwardOutline, IoSparklesOutline, IoCheckmarkCircleOutline, IoWarningOutline, IoChevronDownOutline, IoChevronUpOutline } from 'react-icons/io5';
 
 interface CsvImportModalProps {
@@ -35,6 +35,34 @@ const parseCSV = (csvText: string): { headers: string[], data: Array<Record<stri
         return row;
     });
     return { headers, data };
+};
+
+const parseJSON = (jsonText: string): { headers: string[], data: Array<Record<string, string>> } => {
+    try {
+        const parsed = JSON.parse(jsonText);
+        if (!Array.isArray(parsed)) throw new Error("El JSON debe ser un array de objetos.");
+        if (parsed.length === 0) return { headers: [], data: [] };
+        
+        const headersSet = new Set<string>();
+        parsed.forEach(item => {
+            if (typeof item === 'object' && item !== null) {
+                Object.keys(item).forEach(k => headersSet.add(k));
+            }
+        });
+        const headers = Array.from(headersSet);
+        
+        const data = parsed.map(item => {
+            const row: Record<string, string> = {};
+            headers.forEach(h => {
+                row[h] = item[h] !== undefined && item[h] !== null ? String(item[h]) : '';
+            });
+            return row;
+        });
+        
+        return { headers, data };
+    } catch (e) {
+        throw new Error("Error al parsear el archivo JSON. Asegúrate de que sea un array de objetos válido.");
+    }
 };
 
 const spanishMonths: { [key: string]: number } = {
@@ -108,6 +136,7 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
     const [error, setError] = useState<string | null>(null);
     const [importResult, setImportResult] = useState<{ success: number, failed: number } | null>(null);
     const [expandedErrors, setExpandedErrors] = useState<Record<number, boolean>>({});
+    const [selectedCaseId, setSelectedCaseId] = useState<string>('');
 
     const targetFields: { key: keyof MappableIntervention, label: string, required: boolean }[] = [
         { key: 'title', label: 'Título', required: true },
@@ -123,7 +152,7 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
     const resetState = () => {
         setStep('upload'); setFile(null); setCsvHeaders([]); setCsvData([]);
         setUserMappings({} as Mappings); setProcessedEvents([]); setIsLoading(false);
-        setError(null); setImportResult(null); setExpandedErrors({});
+        setError(null); setImportResult(null); setExpandedErrors({}); setSelectedCaseId('');
     };
 
     const handleClose = () => { resetState(); onClose(); };
@@ -132,16 +161,77 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
         if (!selectedFile) return;
         setIsLoading(true); setError(null); setFile(selectedFile);
         try {
+            if (selectedFile.name.toLowerCase().endsWith('.pdf')) {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const base64Pdf = e.target?.result as string;
+                        const extractedEvents = await extractEventsFromPdf(base64Pdf);
+                        
+                        if (!Array.isArray(extractedEvents) || extractedEvents.length === 0) throw new Error("No se encontraron eventos en el PDF.");
+                        
+                        // Convert extracted events to ProcessedEvent format directly
+                        const results: ProcessedEvent[] = extractedEvents.map((event, index) => {
+                            const data: Partial<Omit<Intervention, 'id'>> = {
+                                title: event.title,
+                                start: event.start,
+                                end: event.end,
+                                interventionType: event.interventionType as InterventionType,
+                                notes: event.notes,
+                                caseId: selectedCaseId || event.caseId,
+                                isAllDay: event.isAllDay,
+                                isRegistered: true,
+                                status: InterventionStatus.Completed
+                            };
+                            
+                            const errors = validateRow(data);
+                            return { data, errors, originalRow: event, originalRowIndex: index };
+                        });
+                        
+                        setProcessedEvents(results);
+                        setStep('preview');
+                    } catch (err) {
+                        setError(err instanceof Error ? err.message : "Error al extraer datos del PDF.");
+                        setFile(null);
+                    } finally {
+                        setIsLoading(false);
+                    }
+                };
+                reader.onerror = () => {
+                    setError("Error al leer el archivo PDF.");
+                    setFile(null);
+                    setIsLoading(false);
+                };
+                reader.readAsDataURL(selectedFile);
+                return; // Exit early, rest of the logic is for CSV/JSON
+            }
+
             const text = await selectedFile.text();
-            const { headers, data } = parseCSV(text);
-            if (headers.length === 0 || data.length === 0) throw new Error("El archivo CSV está vacío o tiene un formato incorrecto.");
+            let headers: string[] = [];
+            let data: Array<Record<string, string>> = [];
+            
+            if (selectedFile.name.toLowerCase().endsWith('.json')) {
+                const parsed = parseJSON(text);
+                headers = parsed.headers;
+                data = parsed.data;
+            } else {
+                const parsed = parseCSV(text);
+                headers = parsed.headers;
+                data = parsed.data;
+            }
+            
+            if (headers.length === 0 || data.length === 0) throw new Error("El archivo está vacío o tiene un formato incorrecto.");
             setCsvHeaders(headers); setCsvData(data);
             const mappings = await mapCsvHeaders(headers) as Mappings;
             setUserMappings(mappings); setStep('mapping');
         } catch (err) {
             setError(err instanceof Error ? err.message : "Error al procesar el archivo.");
             setFile(null);
-        } finally { setIsLoading(false); }
+        } finally { 
+            if (!selectedFile.name.toLowerCase().endsWith('.pdf')) {
+                setIsLoading(false); 
+            }
+        }
     };
     
     const handleMappingChange = (field: keyof MappableIntervention, value: string) => {
@@ -162,7 +252,7 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
     const processAndPreview = () => {
         setIsLoading(true);
         const results: ProcessedEvent[] = csvData.map((row, index) => {
-            let event: Partial<Omit<Intervention, 'id'>> = {};
+            let event: Partial<Omit<Intervention, 'id'>> = { isRegistered: true };
             const errors: RowError[] = [];
             let inferredAllDay = false;
 
@@ -176,7 +266,9 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
                             case 'title': event.title = value; break;
                             case 'notes': event.notes = value; break;
                             case 'interventionType': event.interventionType = value as InterventionType; break;
-                            case 'caseId': event.caseId = value; break;
+                            case 'caseId': 
+                                if (!selectedCaseId) event.caseId = value; 
+                                break;
                             case 'isRegistered': 
                                 event.isRegistered = ['true', 'si', '1', 'yes'].includes(value.toLowerCase());
                                 break;
@@ -199,6 +291,10 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
                     }
                 }
             });
+
+            if (selectedCaseId) {
+                event.caseId = selectedCaseId;
+            }
 
             const allDayHeader = userMappings.isAllDay;
             if (allDayHeader && row[allDayHeader] !== undefined && row[allDayHeader].trim() !== '') {
@@ -277,17 +373,35 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
     const renderUploadStep = () => (
         <div className="text-center">
             <IoCloudUploadOutline className="mx-auto text-5xl text-teal-500" />
-            <h3 className="text-xl font-semibold text-slate-800 mt-4">Cargar archivo CSV</h3>
-            <p className="text-slate-500 mt-2">Arrastra y suelta tu archivo aquí o haz clic para seleccionarlo.</p>
-            <input type="file" accept=".csv" onChange={e => handleFileChange(e.target.files?.[0] || null)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-            <button onClick={downloadTemplate} className="mt-4 text-sm text-teal-600 hover:underline">Descargar plantilla de ejemplo</button>
+            <h3 className="text-xl font-semibold text-slate-800 mt-4">Cargar archivo CSV, JSON o PDF</h3>
+            
+            <div className="mt-6 mb-6 text-left max-w-md mx-auto bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Asociar directamente a un caso (Opcional)</label>
+                <select 
+                    value={selectedCaseId} 
+                    onChange={e => setSelectedCaseId(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white border-slate-300 focus:ring-teal-500 text-slate-900"
+                >
+                    <option value="">-- Usar columna/datos del archivo --</option>
+                    {cases.map(c => (
+                        <option key={c.id} value={c.id}>{c.name} {c.dni ? `(${c.dni})` : ''}</option>
+                    ))}
+                </select>
+                <p className="text-xs text-slate-500 mt-2">Si seleccionas un caso, todas las actuaciones importadas se asociarán a él, ignorando la información del archivo.</p>
+            </div>
+
+            <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-10 hover:border-teal-500 transition-colors cursor-pointer bg-white">
+                <p className="text-slate-600 font-medium">Haz clic o arrastra un archivo (.csv, .json, .pdf)</p>
+                <input type="file" accept=".csv,.json,.pdf" onChange={e => handleFileChange(e.target.files?.[0] || null)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+            </div>
+            <button onClick={downloadTemplate} className="mt-4 text-sm text-teal-600 hover:underline">Descargar plantilla CSV de ejemplo</button>
         </div>
     );
 
     const renderMappingStep = () => (
         <div>
              <h3 className="text-xl font-semibold text-slate-800 mb-2 flex items-center gap-2"><IoSparklesOutline className="text-teal-500"/> Mapeo Asistido por IA</h3>
-             <p className="text-sm text-slate-600 mb-4">Revisa y ajusta las columnas del CSV que corresponden a cada campo del sistema.</p>
+             <p className="text-sm text-slate-600 mb-4">Revisa y ajusta las columnas del archivo que corresponden a cada campo del sistema.</p>
              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
                 {targetFields.map(field => (
                     <div key={field.key} className="grid grid-cols-2 gap-4 items-center">
@@ -296,10 +410,14 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
                             value={userMappings[field.key] || ''}
                             onChange={e => handleMappingChange(field.key, e.target.value)}
                             className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-white border-slate-300 focus:ring-teal-500 text-slate-900"
+                            disabled={field.key === 'caseId' && !!selectedCaseId}
                         >
                             <option value="">-- No importar --</option>
                             {csvHeaders.map(header => <option key={header} value={header}>{header}</option>)}
                         </select>
+                        {field.key === 'caseId' && !!selectedCaseId && (
+                            <p className="col-span-2 text-xs text-teal-600 text-right">Asignado automáticamente al caso seleccionado.</p>
+                        )}
                     </div>
                 ))}
              </div>
@@ -383,7 +501,7 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
         if (isLoading) { return (<div className="text-center py-10"><IoSparklesOutline className="text-5xl text-teal-500 mx-auto animate-pulse" /><p className="mt-4 text-slate-600">{step === 'mapping' ? 'Analizando tu archivo con IA...' : 'Procesando datos...'}</p></div>); }
         if (step === 'importing') { return (<div className="text-center py-10"><IoSparklesOutline className="text-5xl text-teal-500 mx-auto animate-pulse" /><p className="mt-4 text-slate-600">Importando eventos... Esto puede tardar unos segundos.</p></div>); }
         switch (step) {
-            case 'upload': return <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-10 hover:border-teal-500 transition-colors">{renderUploadStep()}</div>;
+            case 'upload': return renderUploadStep();
             case 'mapping': return renderMappingStep();
             case 'preview': return renderPreviewStep();
             case 'result': return renderResultStep();

@@ -5,9 +5,10 @@ import { IoLogInOutline, IoChevronDownOutline, IoEyeOutline, IoEyeOffOutline } f
 interface LoginProps {
     professionals: Professional[];
     onLogin: (user: Professional) => void;
+    authError?: string | null;
 }
 
-const Login: React.FC<LoginProps> = ({ professionals, onLogin }) => {
+const Login: React.FC<LoginProps> = ({ professionals, onLogin, authError }) => {
     const [selectedUserId, setSelectedUserId] = useState('');
     const [password, setPassword] = useState('');
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -57,7 +58,13 @@ const Login: React.FC<LoginProps> = ({ professionals, onLogin }) => {
     const selectedUser = systemUsers.find(u => u.id === selectedUserId);
 
     return (
-        <div className="bg-slate-50 min-h-screen flex items-start justify-center p-4 pt-20 sm:pt-32">
+        <div className="bg-slate-50 min-h-screen flex flex-col items-center justify-start p-4 pt-20 sm:pt-32">
+            {authError && (
+                <div className="w-full max-w-sm mb-6 bg-amber-100 border border-amber-300 text-amber-900 px-4 py-3 rounded-lg shadow-sm text-sm" role="alert">
+                    <p className="font-bold">Error de conexión</p>
+                    <p>{authError}</p>
+                </div>
+            )}
             <div className="w-full max-w-sm">
                 <div className="bg-white rounded-2xl shadow-xl p-8">
                     <h1 className="text-3xl font-bold text-slate-800 text-center">Cuaderno de Campo</h1>
@@ -65,38 +72,37 @@ const Login: React.FC<LoginProps> = ({ professionals, onLogin }) => {
                     
                     <form onSubmit={handleSubmit} className="mt-8 space-y-6">
                         <div>
-                            <label htmlFor="user-select-button" className="block text-slate-700 font-semibold mb-2">Usuario</label>
-                            <div className="relative" ref={dropdownRef}>
-                                <button
-                                    type="button"
-                                    id="user-select-button"
-                                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                                    aria-haspopup="listbox"
-                                    aria-expanded={isDropdownOpen}
-                                    className={`w-full flex justify-between items-center px-4 py-3 text-base border rounded-lg focus:outline-none focus:ring-2 bg-slate-100 text-slate-900 border-slate-300 focus:ring-teal-500 text-left ${!selectedUser ? 'text-slate-500' : ''}`}
+                            <label htmlFor="user-select" className="block text-slate-700 font-semibold mb-2">Usuario</label>
+                            <div className="relative">
+                                <select
+                                    id="user-select"
+                                    value={selectedUserId}
+                                    onChange={(e) => { setSelectedUserId(e.target.value); setError(null); }}
+                                    className={`w-full px-4 py-3 text-base border rounded-lg focus:outline-none focus:ring-2 bg-slate-100 text-slate-900 border-slate-300 focus:ring-teal-500 appearance-none ${!selectedUserId ? 'text-slate-500' : ''}`}
+                                    disabled={systemUsers.length === 0}
                                 >
-                                    <span>{selectedUser ? selectedUser.name : 'Selecciona tu perfil...'}</span>
-                                    <IoChevronDownOutline className={`transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
-                                </button>
-                                {isDropdownOpen && (
-                                    <ul
-                                        role="listbox"
-                                        className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto"
-                                    >
-                                        {systemUsers.map(user => (
-                                            <li
-                                                key={user.id}
-                                                role="option"
-                                                aria-selected={selectedUserId === user.id}
-                                                onClick={() => handleSelectUser(user.id)}
-                                                className={`px-4 py-2 cursor-pointer text-slate-800 hover:bg-teal-50 ${selectedUserId === user.id ? 'bg-teal-100 font-semibold' : ''}`}
-                                            >
-                                                {user.name}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
+                                    <option value="" disabled>
+                                        {systemUsers.length === 0 ? 'No hay usuarios disponibles...' : 'Selecciona tu perfil...'}
+                                    </option>
+                                    {systemUsers.map(user => (
+                                        <option key={user.id} value={user.id}>
+                                            {user.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-600">
+                                    <IoChevronDownOutline />
+                                </div>
                             </div>
+                            {systemUsers.length === 0 && !authError && (
+                                <button 
+                                    type="button" 
+                                    onClick={() => window.location.reload()} 
+                                    className="mt-2 text-sm text-teal-600 hover:underline flex items-center justify-center w-full"
+                                >
+                                    Hubo un problema al cargar. Click aquí para recargar la página.
+                                </button>
+                            )}
                         </div>
                         
                         <div>

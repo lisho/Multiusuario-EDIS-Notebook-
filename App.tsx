@@ -254,6 +254,10 @@ const App: React.FC = () => {
                 if (isMounted) {
                     if (error.code === 'permission-denied') {
                         setAuthError("Permisos insuficientes. Asegúrate de que las reglas de seguridad de Firestore permitan lectura/escritura (o que la autenticación anónima esté habilitada y funcionando).");
+                    } else if (error.code === 'unavailable') {
+                        setAuthError("No se pudo conectar al servidor. Es posible que tengas problemas de conexión o que el dispositivo se haya suspendido. Por favor, recarga la aplicación.");
+                    } else {
+                        setAuthError(`Hubo un error al cargar los datos (${error.message || 'Error desconocido'}). Por favor, recarga la aplicación.`);
                     }
                 }
             } finally {
@@ -813,11 +817,14 @@ const App: React.FC = () => {
             const batch = writeBatch(db);
 
             if (isEditing) {
-                const originalCase = cases.find(c => c.interventions.some(i => i.id === finalIntervention.id));
+                const originalCase = cases.find(c => (c.interventions || []).some(i => i.id === finalIntervention.id));
                 const wasGeneral = !originalCase && generalInterventions.some(i => i.id === finalIntervention.id);
                 
-                if (originalCase && originalCase.id !== finalIntervention.caseId) {
-                    const updatedInterventions = originalCase.interventions.filter(i => i.id !== finalIntervention.id);
+                if (originalCase && finalIntervention.caseId && originalCase.id !== finalIntervention.caseId) {
+                    const updatedInterventions = (originalCase.interventions || []).filter(i => i.id !== finalIntervention.id);
+                    batch.update(doc(db, 'cases', originalCase.id), { interventions: updatedInterventions, lastUpdate: new Date().toISOString() });
+                } else if (originalCase && !finalIntervention.caseId) {
+                    const updatedInterventions = (originalCase.interventions || []).filter(i => i.id !== finalIntervention.id);
                     batch.update(doc(db, 'cases', originalCase.id), { interventions: updatedInterventions, lastUpdate: new Date().toISOString() });
                 } else if (wasGeneral && finalIntervention.caseId) {
                     batch.delete(doc(db, 'generalInterventions', finalIntervention.id));
@@ -827,7 +834,7 @@ const App: React.FC = () => {
             if (finalIntervention.caseId) {
                 const targetCase = cases.find(c => c.id === finalIntervention.caseId);
                 if (targetCase) {
-                    const updatedInterventions = [...targetCase.interventions.filter(i => i.id !== finalIntervention.id), finalIntervention];
+                    const updatedInterventions = [...(targetCase.interventions || []).filter(i => i.id !== finalIntervention.id), finalIntervention];
                     batch.update(doc(db, 'cases', targetCase.id), { interventions: updatedInterventions, lastUpdate: new Date().toISOString() });
                 }
             } else {
@@ -836,26 +843,44 @@ const App: React.FC = () => {
 
             await batch.commit();
 
-            let newCases = [...cases];
-            let newGeneralInterventions = [...generalInterventions];
-            
-            if (isEditing) {
-                newCases = newCases.map(c => ({...c, interventions: c.interventions.filter(i => i.id !== finalIntervention.id) }));
-                newGeneralInterventions = newGeneralInterventions.filter(i => i.id !== finalIntervention.id);
-            }
-            if (finalIntervention.caseId) {
-                const caseIndex = newCases.findIndex(c => c.id === finalIntervention.caseId);
-                if (caseIndex > -1) {
-                    newCases[caseIndex] = {...newCases[caseIndex], interventions: [...newCases[caseIndex].interventions, finalIntervention], lastUpdate: new Date().toISOString()};
+            setCases(prevCases => {
+                let newCases = [...prevCases];
+                if (isEditing) {
+                    newCases = newCases.map(c => ({...c, interventions: (c.interventions || []).filter(i => i.id !== finalIntervention.id) }));
                 }
-            } else {
-                newGeneralInterventions.push(finalIntervention);
-            }
-            setCases(newCases.sort(caseSorter));
-            setGeneralInterventions(newGeneralInterventions);
-             if (selectedCase) {
-                const updatedSelectedCase = newCases.find(c => c.id === selectedCase.id);
-                setSelectedCase(updatedSelectedCase || null);
+                if (finalIntervention.caseId) {
+                    const caseIndex = newCases.findIndex(c => c.id === finalIntervention.caseId);
+                    if (caseIndex > -1) {
+                        newCases[caseIndex] = {...newCases[caseIndex], interventions: [...(newCases[caseIndex].interventions || []), finalIntervention], lastUpdate: new Date().toISOString()};
+                    }
+                }
+                return newCases.sort(caseSorter);
+            });
+
+            setGeneralInterventions(prevGeneral => {
+                let newGeneral = [...prevGeneral];
+                if (isEditing) {
+                    newGeneral = newGeneral.filter(i => i.id !== finalIntervention.id);
+                }
+                if (!finalIntervention.caseId) {
+                    newGeneral.push(finalIntervention);
+                }
+                return newGeneral;
+            });
+
+            if (selectedCase) {
+                setSelectedCase(prevSelected => {
+                    if (!prevSelected) return null;
+                    if (finalIntervention.caseId === prevSelected.id) {
+                        const updatedInterventions = [...(prevSelected.interventions || []).filter(i => i.id !== finalIntervention.id), finalIntervention];
+                        return { ...prevSelected, interventions: updatedInterventions, lastUpdate: new Date().toISOString() };
+                    }
+                    if (isEditing && (prevSelected.interventions || []).some(i => i.id === finalIntervention.id) && finalIntervention.caseId !== prevSelected.id) {
+                         // Intervention moved away from this case
+                         return { ...prevSelected, interventions: (prevSelected.interventions || []).filter(i => i.id !== finalIntervention.id), lastUpdate: new Date().toISOString() };
+                    }
+                    return prevSelected;
+                });
             }
 
         } catch (error) {
@@ -863,6 +888,91 @@ const App: React.FC = () => {
         }
     };
     
+    const handleBulkSaveInterventions = async (interventions: Intervention[]) => {
+        if (!currentUser || interventions.length === 0) return;
+        
+        try {
+            const batch = writeBatch(db);
+            const caseIds = new Set<string>();
+            const hasGeneral = interventions.some(i => !i.caseId);
+
+            interventions.forEach(intervention => {
+                const finalIntervention = Object.entries(intervention).reduce((acc, [key, value]) => {
+                    if (value !== undefined) {
+                        (acc as any)[key] = value;
+                    }
+                    return acc;
+                }, {} as Intervention);
+
+                if (finalIntervention.caseId) {
+                    caseIds.add(finalIntervention.caseId);
+                    const targetCase = cases.find(c => c.id === finalIntervention.caseId);
+                    if (targetCase) {
+                        const updatedInterventions = [...targetCase.interventions.filter(i => i.id !== finalIntervention.id), finalIntervention];
+                        batch.update(doc(db, 'cases', targetCase.id), { interventions: updatedInterventions, lastUpdate: new Date().toISOString() });
+                    }
+                } else {
+                    batch.set(doc(db, 'generalInterventions', finalIntervention.id), finalIntervention);
+                }
+            });
+
+            await batch.commit();
+
+            setCases(prevCases => {
+                let newCases = [...prevCases];
+                interventions.forEach(intervention => {
+                    if (intervention.caseId) {
+                        const caseIndex = newCases.findIndex(c => c.id === intervention.caseId);
+                        if (caseIndex > -1) {
+                            const updatedInterventions = [...newCases[caseIndex].interventions.filter(i => i.id !== intervention.id), intervention];
+                            newCases[caseIndex] = {...newCases[caseIndex], interventions: updatedInterventions, lastUpdate: new Date().toISOString()};
+                        }
+                    }
+                });
+                return newCases.sort(caseSorter);
+            });
+
+            if (hasGeneral) {
+                setGeneralInterventions(prevGeneral => {
+                    let newGeneral = [...prevGeneral];
+                    interventions.forEach(intervention => {
+                        if (!intervention.caseId) {
+                            newGeneral = [...newGeneral.filter(i => i.id !== intervention.id), intervention];
+                        }
+                    });
+                    return newGeneral;
+                });
+            }
+
+            if (selectedCase) {
+                setSelectedCase(prevSelected => {
+                    if (!prevSelected) return null;
+                    const updated = interventions.find(i => i.caseId === prevSelected.id);
+                    if (updated) {
+                        // We need to find the updated case in the new cases list
+                        // But since we are in a functional update, we can't easily access the new cases list here
+                        // However, we can just update the interventions of the prevSelected case
+                        const updatedInterventions = [...prevSelected.interventions];
+                        interventions.forEach(i => {
+                            if (i.caseId === prevSelected.id) {
+                                const idx = updatedInterventions.findIndex(existing => existing.id === i.id);
+                                if (idx > -1) {
+                                    updatedInterventions[idx] = i;
+                                } else {
+                                    updatedInterventions.push(i);
+                                }
+                            }
+                        });
+                        return { ...prevSelected, interventions: updatedInterventions, lastUpdate: new Date().toISOString() };
+                    }
+                    return prevSelected;
+                });
+            }
+        } catch (error) {
+            console.error("Error bulk saving interventions: ", error);
+        }
+    };
+
     const handleDeleteIntervention = async (interventionToDelete: Intervention) => {
         try {
             if (interventionToDelete.caseId) {
@@ -1192,6 +1302,7 @@ const App: React.FC = () => {
                         onSaveInterventionRecord={handleSaveInterventionRecord}
                         onDeleteInterventionRecord={handleDeleteInterventionRecord}
                         onSaveIntervention={handleSaveIntervention}
+                        onBulkSaveInterventions={handleBulkSaveInterventions}
                         onDeleteIntervention={handleDeleteIntervention}
                         isSidebarCollapsed={isSidebarCollapsed}
                         onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
@@ -1450,9 +1561,19 @@ const App: React.FC = () => {
         }
     };
 
+    if (isLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50">
+                <div className="text-center py-20">
+                    <h2 className="text-xl font-semibold text-slate-700">Cargando datos...</h2>
+                </div>
+            </div>
+        );
+    }
+
     if (!currentUser) {
         const systemUsers = professionals.filter(p => p.isSystemUser);
-        return <Login professionals={systemUsers} onLogin={handleLogin} />;
+        return <Login professionals={systemUsers} onLogin={handleLogin} authError={authError} />;
     }
 
     if (viewingGenogramUrl) {

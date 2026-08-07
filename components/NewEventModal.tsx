@@ -21,7 +21,7 @@ const getInitialState = (itemData: Intervention | Partial<Intervention> | null):
 
     return {
         title: '',
-        interventionType: isGeneral ? InterventionType.Reunion : InterventionType.Meeting,
+        interventionType: InterventionType.Meeting,
         start: start.toISOString(),
         end: end.toISOString(),
         isAllDay: false,
