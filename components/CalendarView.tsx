@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Case, Intervention, InterventionType, DashboardView, User } from '../types';
 import NewEventModal from './NewEventModal';
-import { IoAddOutline, IoChevronBackOutline, IoChevronForwardOutline } from 'react-icons/io5';
+import CalendarSearchModal from './CalendarSearchModal';
+import { IoAddOutline, IoChevronBackOutline, IoChevronForwardOutline, IoSearchOutline } from 'react-icons/io5';
 
 interface CalendarViewProps {
     cases: Case[];
@@ -171,6 +172,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view, setView] = useState<CalendarViewType>('week');
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+    const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
     const [modalState, setModalState] = useState<{
         item: Intervention | null;
         initialValues?: Partial<Intervention>;
@@ -335,6 +337,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                     {getTitle()}
                 </h2>
                 <div className="flex flex-wrap items-center justify-center gap-2">
+                     <button
+                        onClick={() => setIsSearchModalOpen(true)}
+                        className="bg-slate-100 text-slate-600 w-10 h-10 rounded-lg hover:bg-slate-200 hover:text-slate-800 flex items-center justify-center transition-colors"
+                        aria-label="Buscar intervenciones"
+                        title="Buscar intervenciones"
+                    >
+                        <IoSearchOutline className="text-xl" />
+                    </button>
                      <button
                         onClick={() => handleOpenModal(null, { start: currentDate.toISOString() })}
                         className="bg-teal-600 text-white w-10 h-10 rounded-lg hover:bg-teal-700 flex items-center justify-center transition-colors"
@@ -596,6 +606,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 onSaveIntervention={onSaveIntervention}
                 onDeleteIntervention={onDeleteIntervention}
                 requestConfirmation={requestConfirmation}
+            />
+            
+            <CalendarSearchModal
+                isOpen={isSearchModalOpen}
+                onClose={() => setIsSearchModalOpen(false)}
+                interventions={allInterventions}
+                cases={cases}
+                onSelectIntervention={(intervention) => handleOpenModal(intervention, undefined)}
             />
         </div>
     );
