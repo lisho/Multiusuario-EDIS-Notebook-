@@ -91,6 +91,7 @@ const App: React.FC = () => {
     const [statusFilter, setStatusFilter] = useState<CaseStatus | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [isClosedCasesVisible, setIsClosedCasesVisible] = useState(false);
+    const [isOtherCasesVisible, setIsOtherCasesVisible] = useState(false);
     const [draggedItem, setDraggedItem] = useState<Case | null>(null);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [viewingGenogramUrl, setViewingGenogramUrl] = useState<string | null>(null);
@@ -411,16 +412,11 @@ const App: React.FC = () => {
     }
     const handleSelectCaseById = (caseId: string, view: DashboardView = 'profile') => {
         const caseToSelect = cases.find(c => c.id === caseId);
-        if (caseToSelect) {
-             // Security check: Only allow selection if admin or assigned professional
-            if (currentUser && (currentUser.role === 'admin' || caseToSelect.professionalIds?.includes(currentUser.id))) {
-                setCurrentView('cases');
-                setInitialDashboardView(view);
-                setSelectedCase(caseToSelect);
-                setTasksPanelState({ mode: 'closed' });
-            } else {
-                console.warn(`Access denied: User ${currentUser?.id} tried to select case ${caseId}.`);
-            }
+        if (caseToSelect && currentUser) {
+            setCurrentView('cases');
+            setInitialDashboardView(view);
+            setSelectedCase(caseToSelect);
+            setTasksPanelState({ mode: 'closed' });
         }
     };
     const handleBackToCases = () => {
@@ -1372,6 +1368,7 @@ const App: React.FC = () => {
             default:
                 const activeCases = visibleCases.filter(c => c.status !== CaseStatus.Closed);
                 const closedCases = visibleCases.filter(c => c.status === CaseStatus.Closed);
+                const otherCases = cases.filter(c => c.status !== CaseStatus.Closed && (!c.professionalIds || !c.professionalIds.includes(currentUser.id)));
 
                 const searchFilter = (c: Case) => searchQuery
                     ? c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1380,24 +1377,28 @@ const App: React.FC = () => {
                 
                 let displayedActiveCases = activeCases.filter(searchFilter);
                 let displayedClosedCases = closedCases.filter(searchFilter);
+                let displayedOtherCases = otherCases.filter(searchFilter);
 
                 let showActiveSection = true;
                 let showClosedSection = true;
+                let showOtherSection = true;
 
                 if (statusFilter) {
                     if (statusFilter === CaseStatus.Closed) {
                         showActiveSection = false;
+                        showOtherSection = false;
                         displayedClosedCases = closedCases.filter(c => c.status === statusFilter).filter(searchFilter);
                     } else {
                         showClosedSection = false;
                         displayedActiveCases = activeCases.filter(c => c.status === statusFilter).filter(searchFilter);
+                        displayedOtherCases = otherCases.filter(c => c.status === statusFilter).filter(searchFilter);
                     }
                 }
                 
                 const pinnedCases = displayedActiveCases.filter(c => c.isPinned);
                 const unpinnedCases = displayedActiveCases.filter(c => !c.isPinned);
 
-                const totalResults = pinnedCases.length + unpinnedCases.length + displayedClosedCases.length;
+                const totalResults = pinnedCases.length + unpinnedCases.length + displayedClosedCases.length + displayedOtherCases.length;
 
                 const isDisplayingOnlyClosed = statusFilter === CaseStatus.Closed;
 
@@ -1487,7 +1488,7 @@ const App: React.FC = () => {
                                 </button>
                             </div>
                         )}
-                        {displayedActiveCases.length > 0 || displayedClosedCases.length > 0 ? (
+                        {displayedActiveCases.length > 0 || displayedClosedCases.length > 0 || displayedOtherCases.length > 0 ? (
                             <div className="space-y-12">
                                 {showActiveSection && (
                                      <div>
@@ -1510,6 +1511,36 @@ const App: React.FC = () => {
                                      </div>
                                 )}
                                 
+                                {showOtherSection && displayedOtherCases.length > 0 && (
+                                    <div>
+                                        <button
+                                            onClick={() => setIsOtherCasesVisible(prev => !prev)}
+                                            className="w-full flex justify-between items-center text-left text-2xl font-bold text-slate-700 mb-6 pb-4 border-b border-slate-200 group"
+                                        >
+                                            <span>Casos que no me importan ({displayedOtherCases.length})</span>
+                                            <IoChevronDownOutline className={`text-2xl text-slate-400 group-hover:text-slate-600 transition-transform duration-300 ${isOtherCasesVisible ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        {isOtherCasesVisible && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                                {displayedOtherCases.map((caseData, index) => (
+                                                    <AnimatedSection key={caseData.id} delay={index * 50} className="h-full">
+                                                        <CaseCard 
+                                                            caseData={caseData}
+                                                            professionals={professionals}
+                                                            onSelect={handleSelectCase} 
+                                                            onOpenTasks={(caseData) => setTasksPanelState({ mode: 'single', caseData })}
+                                                            onSetStatusFilter={setStatusFilter}
+                                                            onTogglePin={() => handleTogglePin(caseData)}
+                                                            onAddQuickNote={handleOpenQuickNoteModal}
+                                                            draggable={false}
+                                                        />
+                                                    </AnimatedSection>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 {showClosedSection && displayedClosedCases.length > 0 && (
                                     <div>
                                         <button

@@ -132,7 +132,14 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
             <div>
                 <label htmlFor="role" className="block text-slate-700 font-semibold mb-2">Rol Profesional</label>
-                <select id="role" name="role" value={professional.role} onChange={handleChange} className={formInputStyle(false)}>
+                <select 
+                    id="role" 
+                    name="role" 
+                    value={professional.role} 
+                    onChange={handleChange} 
+                    disabled={!initialData}
+                    className={`${formInputStyle(false)} ${!initialData ? 'opacity-70 cursor-not-allowed bg-slate-200' : ''}`}
+                >
                     {Object.values(ProfessionalRole).map(role => (
                         <option key={role} value={role}>{role}</option>
                     ))}
