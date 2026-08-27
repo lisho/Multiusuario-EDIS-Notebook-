@@ -123,6 +123,7 @@ export interface Intervention {
     status: InterventionStatus;
     cancellationTime?: string; // ISO string
     createdBy?: string;
+    assignedTo?: string[];
 }
 
 export interface InterventionRecord {

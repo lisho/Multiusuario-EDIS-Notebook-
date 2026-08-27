@@ -495,6 +495,8 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                 onClose={() => setIsEventModalOpen(false)}
                 itemData={modalState.item || modalState.initialValues}
                 cases={cases}
+                professionals={professionals}
+                currentUser={currentUser}
                 onSaveIntervention={onSaveIntervention}
                 onDeleteIntervention={onDeleteIntervention}
                 requestConfirmation={requestConfirmation}

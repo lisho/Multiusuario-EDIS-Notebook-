@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Case, Intervention, InterventionStatus, InterventionType } from '../types';
+import { Case, Intervention, InterventionStatus, InterventionType, Professional, ProfessionalRole, User } from '../types';
 import { IoCloseOutline, IoTrashOutline, IoSaveOutline } from 'react-icons/io5';
 
 interface NewEventModalProps {
@@ -7,18 +7,18 @@ interface NewEventModalProps {
     onClose: () => void;
     itemData: Intervention | Partial<Intervention> | null;
     cases: Case[];
+    professionals: Professional[];
+    currentUser: User | null;
     onSaveIntervention: (intervention: Omit<Intervention, 'id'> | Intervention) => void;
     onDeleteIntervention: (intervention: Intervention) => void;
     requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
 }
 
-const getInitialState = (itemData: Intervention | Partial<Intervention> | null): Partial<Intervention> => {
+const getInitialState = (itemData: Intervention | Partial<Intervention> | null, currentUser: User | null): Partial<Intervention> => {
     const now = new Date();
     const start = itemData?.start ? new Date(itemData.start) : now;
     const end = itemData?.end ? new Date(itemData.end) : new Date(now.getTime() + 60 * 60 * 1000);
     
-    const isGeneral = !itemData?.caseId;
-
     return {
         title: '',
         interventionType: InterventionType.Meeting,
@@ -29,6 +29,7 @@ const getInitialState = (itemData: Intervention | Partial<Intervention> | null):
         isRegistered: false,
         caseId: null,
         status: InterventionStatus.Planned,
+        assignedTo: itemData?.assignedTo || (currentUser ? [currentUser.id] : []),
         ...itemData,
     };
 };
@@ -37,18 +38,18 @@ const getInitialState = (itemData: Intervention | Partial<Intervention> | null):
 const allInterventionTypes = Object.values(InterventionType).sort((a, b) => a.localeCompare(b));
 
 
-const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData, cases, onSaveIntervention, onDeleteIntervention, requestConfirmation }) => {
-    const [formData, setFormData] = useState<Partial<Intervention>>(getInitialState(itemData));
+const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData, cases, professionals, currentUser, onSaveIntervention, onDeleteIntervention, requestConfirmation }) => {
+    const [formData, setFormData] = useState<Partial<Intervention>>(getInitialState(itemData, currentUser));
     const [errors, setErrors] = useState<{ title?: string; date?: string }>({});
 
     const isEditing = itemData && 'id' in itemData;
 
     useEffect(() => {
         if (isOpen) {
-            setFormData(getInitialState(itemData));
+            setFormData(getInitialState(itemData, currentUser));
             setErrors({});
         }
-    }, [isOpen, itemData]);
+    }, [isOpen, itemData, currentUser]);
 
     // Converts an ISO string (UTC) to a 'YYYY-MM-DD' string in the user's local timezone for date inputs.
     const isoToInputDate = (isoString?: string) => {
@@ -312,6 +313,29 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
                     <div>
                         <label htmlFor="notes" className="block text-slate-700 font-semibold mb-2">Notas</label>
                         <textarea id="notes" name="notes" value={formData.notes || ''} onChange={handleChange} className={formInputStyle(false)} rows={4} placeholder="Añade detalles sobre la intervención..."></textarea>
+                    </div>
+
+                    <div>
+                        <label className="block text-slate-700 font-semibold mb-2">Asignar a Técnicos / Profesionales (Calendario compartido)</label>
+                        <div className="p-2 bg-slate-100 border border-slate-300 rounded-lg max-h-40 overflow-y-auto space-y-1">
+                            {professionals.filter(p => p.role === ProfessionalRole.EdisTechnician && p.systemRole !== 'admin').map(p => (
+                                <label key={p.id} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-slate-200">
+                                    <input
+                                        type="checkbox"
+                                        checked={(formData.assignedTo || []).includes(p.id)}
+                                        onChange={() => {
+                                            const current = formData.assignedTo || [];
+                                            const updated = current.includes(p.id)
+                                                ? current.filter(id => id !== p.id)
+                                                : [...current, p.id];
+                                            setFormData(prev => ({ ...prev, assignedTo: updated }));
+                                        }}
+                                        className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                    />
+                                    <span className="text-sm text-slate-800">{p.name} <span className="text-xs text-slate-500">({p.role})</span></span>
+                                </label>
+                            ))}
+                        </div>
                     </div>
 
                     <div>

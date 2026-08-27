@@ -176,7 +176,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                         onDelete={() => onDeleteGeneralTask(task.id)} 
                                         onConvertToEntry={() => {}} 
                                         onUpdate={onUpdateGeneralTask}
-                                        professionals={[]} 
+                                        professionals={professionals} 
                                     />
                                 ))}
                             </div>

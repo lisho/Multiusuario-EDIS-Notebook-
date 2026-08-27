@@ -496,6 +496,8 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                 onClose={handleCloseEventModal}
                 itemData={eventModalState.item || eventModalState.initialValues}
                 cases={[caseData]}
+                professionals={props.professionals}
+                currentUser={currentUser}
                 onSaveIntervention={props.onSaveIntervention}
                 onDeleteIntervention={props.onDeleteIntervention}
                 requestConfirmation={requestConfirmation}

@@ -297,8 +297,8 @@ const App: React.FC = () => {
         if (currentUser.role === 'admin') {
             return cases; // Admins see all cases
         }
-        // Technicians only see cases they are assigned to
-        return cases.filter(c => c.professionalIds?.includes(currentUser.id));
+        // Technicians see cases they are assigned to or have an intervention assigned to them
+        return cases.filter(c => c.professionalIds?.includes(currentUser.id) || (c.interventions || []).some(i => i.createdBy === currentUser.id || i.assignedTo?.includes(currentUser.id)));
     }, [cases, currentUser]);
     
     const currentUserProfessional = useMemo(() => {
@@ -1348,6 +1348,7 @@ const App: React.FC = () => {
                 return <CalendarView 
                             cases={visibleCases} 
                             generalInterventions={generalInterventions}
+                            professionals={professionals}
                             onSaveIntervention={handleSaveIntervention}
                             onDeleteIntervention={handleDeleteIntervention}
                             onSelectCaseById={handleSelectCaseById}

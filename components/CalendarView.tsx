@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Case, Intervention, InterventionType, DashboardView, User } from '../types';
+import { Case, Intervention, InterventionType, DashboardView, User, Professional } from '../types';
 import NewEventModal from './NewEventModal';
 import CalendarSearchModal from './CalendarSearchModal';
 import { IoAddOutline, IoChevronBackOutline, IoChevronForwardOutline, IoSearchOutline } from 'react-icons/io5';
@@ -7,6 +7,7 @@ import { IoAddOutline, IoChevronBackOutline, IoChevronForwardOutline, IoSearchOu
 interface CalendarViewProps {
     cases: Case[];
     generalInterventions: Intervention[];
+    professionals: Professional[];
     onSaveIntervention: (intervention: Omit<Intervention, 'id'> | Intervention) => void;
     onDeleteIntervention: (intervention: Intervention) => void;
     onSelectCaseById: (caseId: string, view: DashboardView) => void;
@@ -168,7 +169,7 @@ const calculateEventPositions = (events: Intervention[]): PositionedEvent[] => {
 };
 
 
-const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions, onSaveIntervention, onDeleteIntervention, onSelectCaseById, requestConfirmation, currentUser }) => {
+const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions, professionals, onSaveIntervention, onDeleteIntervention, onSelectCaseById, requestConfirmation, currentUser }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view, setView] = useState<CalendarViewType>('week');
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
@@ -181,8 +182,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     const allInterventions = useMemo(() => {
         const caseInterventions = cases.flatMap(c => c.interventions);
         const combined = [...caseInterventions, ...generalInterventions];
-        // Filter interventions for the current user
-        return combined.filter(i => i.createdBy === currentUser.id);
+        // Filter interventions for the current user (created by user or assigned to user, or admin)
+        return combined.filter(i => i.createdBy === currentUser.id || i.assignedTo?.includes(currentUser.id) || currentUser.role === 'admin');
     }, [cases, generalInterventions, currentUser]);
 
 
@@ -603,6 +604,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 onClose={() => setIsEventModalOpen(false)}
                 itemData={modalState.item || modalState.initialValues}
                 cases={cases}
+                professionals={professionals}
+                currentUser={currentUser}
                 onSaveIntervention={onSaveIntervention}
                 onDeleteIntervention={onDeleteIntervention}
                 requestConfirmation={requestConfirmation}
