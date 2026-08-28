@@ -150,7 +150,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
 
     if (!isOpen) return null;
 
-    const title = mode === 'single' ? `Tareas de ${caseData?.name}` : 'Todas las Tareas';
+    const title = mode === 'single' ? `Tareas en el expediente: ${caseData?.name}` : 'Todas las Tareas';
 
     return (
         <>

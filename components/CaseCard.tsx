@@ -2,7 +2,7 @@ import React from 'react';
 import { Case, CaseStatus, Professional, DashboardView, ProfessionalRole } from '../types';
 import {
     IoCheckboxOutline, IoAddCircleOutline,
-    IoBookOutline
+    IoBookOutline, IoJournalOutline
 } from 'react-icons/io5';
 import { BsPinAngle, BsPinAngleFill } from 'react-icons/bs';
 
@@ -42,6 +42,7 @@ const CaseCard: React.FC<CaseCardProps> = ({
     const { bg, text, footerBg } = getStatusStyles(caseData.status);
     const pendingTasks = caseData.tasks.filter(t => !t.completed).length;
     const notebookEntries = caseData.interventions.filter(i => i.isRegistered).length;
+    const notesCount = Array.isArray(caseData.myNotes) ? caseData.myNotes.length : (caseData.myNotes ? 1 : 0);
 
     const assignedProfessionals = (caseData.professionalIds || [])
         .map(id => professionals.find(p => p.id === id))
@@ -74,6 +75,7 @@ const CaseCard: React.FC<CaseCardProps> = ({
     const handleTogglePin = (e: React.MouseEvent) => { e.stopPropagation(); onTogglePin(); };
     const handleAddNote = (e: React.MouseEvent) => { e.stopPropagation(); onAddQuickNote(caseData); };
     const handleOpenNotebook = (e: React.MouseEvent) => { e.stopPropagation(); onSelect(caseData, 'notebook'); };
+    const handleOpenNotes = (e: React.MouseEvent) => { e.stopPropagation(); onSelect(caseData, 'myNotes'); };
 
     return (
         <div
@@ -140,22 +142,26 @@ const CaseCard: React.FC<CaseCardProps> = ({
                     )}
                 </div>
             </div>
-            <div className={`${footerBg} px-5 py-3 rounded-b-xl border-t border-slate-100 flex justify-between items-center text-sm`}>
-                <div className="flex items-center gap-4">
-                    <button onClick={handleOpenTasks} className="flex items-center gap-1.5 text-slate-600 hover:text-teal-700 font-medium" title="Ver tareas">
+            <div className={`${footerBg} px-4 py-3 rounded-b-xl border-t border-slate-100 flex justify-between items-center text-sm`}>
+                <div className="flex items-center gap-3">
+                    <button onClick={handleOpenTasks} className="flex items-center gap-1 text-slate-600 hover:text-teal-700 font-medium transition-colors" title="Ver tareas">
                         <IoCheckboxOutline className="text-lg" />
                         <span>{pendingTasks}</span>
                     </button>
-                    <button onClick={handleOpenNotebook} className="flex items-center gap-1.5 text-slate-600 hover:text-teal-700 font-medium" title="Cuaderno de Campo">
+                    <button onClick={handleOpenNotebook} className="flex items-center gap-1 text-slate-600 hover:text-teal-700 font-medium transition-colors" title="Cuaderno de Campo">
                         <IoBookOutline className="text-lg" />
                         <span>{notebookEntries}</span>
                     </button>
-                    <button onClick={handleAddNote} className="flex items-center gap-1.5 text-slate-600 hover:text-teal-700 font-medium" title="Añadir nota rápida">
+                    <button onClick={handleOpenNotes} className="flex items-center gap-1 text-slate-600 hover:text-teal-700 font-medium transition-colors" title="Ver notas del caso">
+                        <IoJournalOutline className="text-lg" />
+                        <span>{notesCount}</span>
+                    </button>
+                    <button onClick={handleAddNote} className="flex items-center gap-1 text-slate-500 hover:text-teal-700 font-medium pl-1.5 border-l border-slate-300 transition-colors" title="Añadir nota rápida">
                         <IoAddCircleOutline className="text-lg" />
-                        <span>Nota</span>
+                        <span className="text-xs">Nota</span>
                     </button>
                 </div>
-                <span className="text-xs text-slate-400">{timeSinceUpdate(caseData.lastUpdate)}</span>
+                <span className="text-xs text-slate-400 ml-2 whitespace-nowrap">{timeSinceUpdate(caseData.lastUpdate)}</span>
             </div>
         </div>
     );
