@@ -39,16 +39,25 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({ cases, generalTasks, onBack
         // 1. General Tasks
         const myGeneralTasks = generalTasks.filter(t => t.createdBy === currentUser.id);
         if (myGeneralTasks.length > 0) {
+            const seenGenIds = new Set<string>();
+            const genItems: UnifiedItemData[] = [];
+            myGeneralTasks.forEach(t => {
+                if (!seenGenIds.has(t.id)) {
+                    seenGenIds.add(t.id);
+                    genItems.push({
+                        id: t.id,
+                        content: t.text,
+                        type: 'task',
+                        caseId: null,
+                        isCompleted: t.completed
+                    });
+                }
+            });
+
             result.push({
                 caseId: null,
                 caseName: 'General / Sin Caso',
-                items: myGeneralTasks.map(t => ({
-                    id: t.id,
-                    content: t.text,
-                    type: 'task',
-                    caseId: null,
-                    isCompleted: t.completed
-                }))
+                items: genItems
             });
         }
 
@@ -62,25 +71,37 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({ cases, generalTasks, onBack
         sortedCases.forEach(c => {
             const myNotes = (c.myNotes || []).filter(n => n.createdBy === currentUser.id);
             // Check if tasks are assigned to user or created by user (Tasks usually assignedTo array)
-            const myTasks = c.tasks.filter(t => t.assignedTo?.includes(currentUser.id) || t.createdBy === currentUser.id);
+            const myTasks = (c.tasks || []).filter(t => t.assignedTo?.includes(currentUser.id) || t.createdBy === currentUser.id);
 
             if (myNotes.length > 0 || myTasks.length > 0) {
-                const items: UnifiedItemData[] = [
-                    ...myNotes.map(n => ({
-                        id: n.id,
-                        content: n.content,
-                        type: 'note' as const,
-                        caseId: c.id,
-                        color: n.color
-                    })),
-                    ...myTasks.map(t => ({
-                        id: t.id,
-                        content: t.text,
-                        type: 'task' as const,
-                        caseId: c.id,
-                        isCompleted: t.completed
-                    }))
-                ];
+                const seenItemIds = new Set<string>();
+                const items: UnifiedItemData[] = [];
+
+                myNotes.forEach(n => {
+                    if (n && n.id && !seenItemIds.has(n.id)) {
+                        seenItemIds.add(n.id);
+                        items.push({
+                            id: n.id,
+                            content: n.content,
+                            type: 'note' as const,
+                            caseId: c.id,
+                            color: n.color
+                        });
+                    }
+                });
+
+                myTasks.forEach(t => {
+                    if (t && t.id && !seenItemIds.has(t.id)) {
+                        seenItemIds.add(t.id);
+                        items.push({
+                            id: t.id,
+                            content: t.text,
+                            type: 'task' as const,
+                            caseId: c.id,
+                            isCompleted: t.completed
+                        });
+                    }
+                });
 
                 result.push({
                     caseId: c.id,

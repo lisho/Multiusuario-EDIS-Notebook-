@@ -200,7 +200,15 @@ const App: React.FC = () => {
                         
                         let processedNotes: MyNote[] = [];
                         if (Array.isArray(caseData.myNotes)) {
-                            processedNotes = caseData.myNotes.map(n => ({ ...n, createdBy: n.createdBy || lishoId }));
+                            const seenNoteIds = new Set<string>();
+                            processedNotes = caseData.myNotes
+                                .filter(n => {
+                                    if (!n || !n.id) return false;
+                                    if (seenNoteIds.has(n.id)) return false;
+                                    seenNoteIds.add(n.id);
+                                    return true;
+                                })
+                                .map(n => ({ ...n, createdBy: n.createdBy || lishoId }));
                         } else if (typeof caseData.myNotes === 'string' && (caseData.myNotes as string).trim() !== '') {
                             // This handles legacy data where myNotes was a single string.
                             processedNotes = [{
@@ -555,101 +563,218 @@ const App: React.FC = () => {
         const targetCaseId = data.caseId;
         const type = data.type; // 'note' or 'task'
 
-        // 1. Identify if we are moving/converting an existing item
-        // We need to search where it was before.
-        let previousLocation: { type: 'case' | 'general', caseId?: string, itemType: 'note' | 'task', item: any } | null = null;
-
-        if (isEdit) {
-            // Check general tasks
-            const genTask = generalTasks.find(t => t.id === data.id);
-            if (genTask) previousLocation = { type: 'general', itemType: 'task', item: genTask };
-
-            // Check cases
-            if (!previousLocation) {
-                for (const c of cases) {
-                    const note = c.myNotes?.find(n => n.id === data.id);
-                    if (note) {
-                        previousLocation = { type: 'case', caseId: c.id, itemType: 'note', item: note };
-                        break;
-                    }
-                    const task = c.tasks?.find(t => t.id === data.id);
-                    if (task) {
-                        previousLocation = { type: 'case', caseId: c.id, itemType: 'task', item: task };
-                        break;
-                    }
-                }
-            }
-        }
-
-        // 2. Delete from previous location if it moved or changed type
-        if (previousLocation) {
-            const loc = previousLocation;
-            // If location changed OR type changed, delete old one. 
-            // If strictly same location and type, we will update in place later (or just overwrite).
-            // Simplification: Always delete old, create new/update target.
-            
-            if (loc.type === 'general') {
-                await deleteDoc(doc(db, "generalTasks", data.id!));
-                setGeneralTasks(prev => prev.filter(t => t.id !== data.id));
-            } else if (loc.type === 'case' && loc.caseId) {
-                const c = cases.find(k => k.id === loc.caseId);
-                if (c) {
-                    let update: Partial<Case> = {};
-                    if (loc.itemType === 'note') {
-                        update.myNotes = c.myNotes?.filter(n => n.id !== data.id) || [];
+        if (!isEdit) {
+            // Creating a new item
+            const newId = type === 'note' ? `note-${Date.now()}` : `task-${Date.now()}`;
+            if (targetCaseId) {
+                const targetCase = cases.find(c => c.id === targetCaseId);
+                if (targetCase) {
+                    if (type === 'note') {
+                        const newNote: MyNote = {
+                            id: newId,
+                            content: data.content,
+                            color: data.color || 'yellow',
+                            createdAt: new Date().toISOString(),
+                            createdBy: currentUser.id
+                        };
+                        const currentNotes = (targetCase.myNotes || []).filter(n => n.id !== newId);
+                        await handleUpdateCase({ ...targetCase, myNotes: [newNote, ...currentNotes] });
                     } else {
-                        update.tasks = c.tasks.filter(t => t.id !== data.id);
+                        const newTask: Task = {
+                            id: newId,
+                            text: data.content,
+                            completed: data.isCompleted || false,
+                            createdBy: currentUser.id,
+                            assignedTo: [currentUser.id]
+                        };
+                        await handleUpdateCase({ ...targetCase, tasks: [...targetCase.tasks, newTask] });
                     }
-                    // We do strictly ONE update per case doc if possible, but here we might update old case then new case.
-                    // For simplicity, let's update the old case now.
-                    await handleUpdateCase({ ...c, ...update });
+                }
+            } else {
+                // General Task
+                const newTask: Task = {
+                    id: newId,
+                    text: data.content,
+                    completed: data.isCompleted || false,
+                    createdBy: currentUser.id
+                };
+                try {
+                    const docRef = doc(db, "generalTasks", newTask.id);
+                    await setDoc(docRef, newTask);
+                    setGeneralTasks(prevTasks => [...prevTasks, newTask]);
+                } catch (error) {
+                    console.error("Error adding general task from unified view:", error);
+                }
+            }
+            return;
+        }
+
+        // It is an EDIT of an existing item:
+        const itemId = data.id!;
+
+        // 1. Locate previous location
+        let prevLoc: {
+            isGeneral: boolean;
+            caseId?: string;
+            itemType: 'note' | 'task';
+            item: any;
+        } | null = null;
+
+        const genTask = generalTasks.find(t => t.id === itemId);
+        if (genTask) {
+            prevLoc = { isGeneral: true, itemType: 'task', item: genTask };
+        } else {
+            for (const c of cases) {
+                const note = c.myNotes?.find(n => n.id === itemId);
+                if (note) {
+                    prevLoc = { isGeneral: false, caseId: c.id, itemType: 'note', item: note };
+                    break;
+                }
+                const task = c.tasks?.find(t => t.id === itemId);
+                if (task) {
+                    prevLoc = { isGeneral: false, caseId: c.id, itemType: 'task', item: task };
+                    break;
                 }
             }
         }
 
-        // 3. Create/Update in new location
-        const newId = data.id || (type === 'note' ? `note-${Date.now()}` : `task-${Date.now()}`);
-        
-        if (targetCaseId) {
-            // It's going into a case
+        // Scenario A: Same Case update (most common: editing note/task in place)
+        if (prevLoc && !prevLoc.isGeneral && prevLoc.caseId === targetCaseId) {
             const targetCase = cases.find(c => c.id === targetCaseId);
-            if (targetCase) {
-                if (type === 'note') {
+            if (!targetCase) return;
+
+            let updatedNotes = [...(targetCase.myNotes || [])];
+            let updatedTasks = [...(targetCase.tasks || [])];
+
+            if (type === 'note') {
+                if (prevLoc.itemType === 'task') {
+                    updatedTasks = updatedTasks.filter(t => t.id !== itemId);
+                }
+                const existingNoteIndex = updatedNotes.findIndex(n => n.id === itemId);
+                if (existingNoteIndex > -1) {
+                    updatedNotes[existingNoteIndex] = {
+                        ...updatedNotes[existingNoteIndex],
+                        content: data.content,
+                        color: data.color || updatedNotes[existingNoteIndex].color || 'yellow'
+                    };
+                } else {
                     const newNote: MyNote = {
-                        id: newId,
+                        id: itemId,
                         content: data.content,
                         color: data.color || 'yellow',
                         createdAt: new Date().toISOString(),
                         createdBy: currentUser.id
                     };
-                    const currentNotes = targetCase.myNotes || [];
-                    await handleUpdateCase({ ...targetCase, myNotes: [newNote, ...currentNotes] });
+                    updatedNotes = [newNote, ...updatedNotes];
+                }
+                // Ensure unique IDs
+                const seenIds = new Set<string>();
+                updatedNotes = updatedNotes.filter(n => {
+                    if (seenIds.has(n.id)) return false;
+                    seenIds.add(n.id);
+                    return true;
+                });
+            } else {
+                if (prevLoc.itemType === 'note') {
+                    updatedNotes = updatedNotes.filter(n => n.id !== itemId);
+                }
+                const existingTaskIndex = updatedTasks.findIndex(t => t.id === itemId);
+                if (existingTaskIndex > -1) {
+                    updatedTasks[existingTaskIndex] = {
+                        ...updatedTasks[existingTaskIndex],
+                        text: data.content,
+                        completed: data.isCompleted !== undefined ? data.isCompleted : updatedTasks[existingTaskIndex].completed
+                    };
                 } else {
-                     const newTask: Task = {
-                        id: newId,
+                    const newTask: Task = {
+                        id: itemId,
                         text: data.content,
                         completed: data.isCompleted || false,
                         createdBy: currentUser.id,
-                        assignedTo: [currentUser.id] // Default assign to self
+                        assignedTo: [currentUser.id]
                     };
-                    await handleUpdateCase({ ...targetCase, tasks: [...targetCase.tasks, newTask] });
+                    updatedTasks = [...updatedTasks, newTask];
+                }
+            }
+
+            await handleUpdateCase({ ...targetCase, myNotes: updatedNotes, tasks: updatedTasks });
+            return;
+        }
+
+        // Scenario B: Same General update
+        if (prevLoc && prevLoc.isGeneral && !targetCaseId) {
+            const taskRef = doc(db, "generalTasks", itemId);
+            const updatedGeneralTask: Task = {
+                id: itemId,
+                text: data.content,
+                completed: data.isCompleted !== undefined ? data.isCompleted : (prevLoc.item.completed || false),
+                createdBy: prevLoc.item.createdBy || currentUser.id
+            };
+            try {
+                await setDoc(taskRef, updatedGeneralTask, { merge: true });
+                setGeneralTasks(prev => prev.map(t => t.id === itemId ? updatedGeneralTask : t));
+            } catch (error) {
+                console.error("Error updating general task:", error);
+            }
+            return;
+        }
+
+        // Scenario C: Moving between cases or between general & case
+        // 1. Remove from source
+        if (prevLoc) {
+            if (prevLoc.isGeneral) {
+                await deleteDoc(doc(db, "generalTasks", itemId));
+                setGeneralTasks(prev => prev.filter(t => t.id !== itemId));
+            } else if (prevLoc.caseId) {
+                const prevCase = cases.find(c => c.id === prevLoc.caseId);
+                if (prevCase) {
+                    const cleanNotes = (prevCase.myNotes || []).filter(n => n.id !== itemId);
+                    const cleanTasks = (prevCase.tasks || []).filter(t => t.id !== itemId);
+                    await handleUpdateCase({ ...prevCase, myNotes: cleanNotes, tasks: cleanTasks });
+                }
+            }
+        }
+
+        // 2. Add to target
+        if (targetCaseId) {
+            const targetCase = cases.find(c => c.id === targetCaseId);
+            if (targetCase) {
+                if (type === 'note') {
+                    const newNote: MyNote = {
+                        id: itemId,
+                        content: data.content,
+                        color: data.color || 'yellow',
+                        createdAt: new Date().toISOString(),
+                        createdBy: currentUser.id
+                    };
+                    const targetNotes = (targetCase.myNotes || []).filter(n => n.id !== itemId);
+                    await handleUpdateCase({ ...targetCase, myNotes: [newNote, ...targetNotes] });
+                } else {
+                    const newTask: Task = {
+                        id: itemId,
+                        text: data.content,
+                        completed: data.isCompleted || false,
+                        createdBy: currentUser.id,
+                        assignedTo: [currentUser.id]
+                    };
+                    const targetTasks = (targetCase.tasks || []).filter(t => t.id !== itemId);
+                    await handleUpdateCase({ ...targetCase, tasks: [...targetTasks, newTask] });
                 }
             }
         } else {
-            // It's General
-            // Notes without case become General Tasks (as per UI decision)
-            const newTask: Task = {
-                id: newId,
+            // Target is general
+            const newGeneralTask: Task = {
+                id: itemId,
                 text: data.content,
                 completed: data.isCompleted || false,
                 createdBy: currentUser.id
             };
-             try {
-                const docRef = doc(db, "generalTasks", newTask.id);
-                await setDoc(docRef, newTask);
-                setGeneralTasks(prevTasks => [...prevTasks, newTask]);
+            try {
+                const docRef = doc(db, "generalTasks", itemId);
+                await setDoc(docRef, newGeneralTask);
+                setGeneralTasks(prev => [...prev.filter(t => t.id !== itemId), newGeneralTask]);
             } catch (error) {
-                console.error("Error adding general task from unified view:", error);
+                console.error("Error moving task to general:", error);
             }
         }
     };
