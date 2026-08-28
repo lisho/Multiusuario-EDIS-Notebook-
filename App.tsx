@@ -215,17 +215,7 @@ const App: React.FC = () => {
 
                         caseData.interventionRecords = caseData.interventionRecords.map(r => ({...r, createdBy: r.createdBy || lishoId}));
                     }
-                     // Data migration: ensure creator is always in professionalIds
-                    if (caseData.createdBy) {
-                        if (!Array.isArray(caseData.professionalIds)) {
-                            caseData.professionalIds = [];
-                        }
-                        if (!caseData.professionalIds.includes(caseData.createdBy)) {
-                            // This will add the creator to the list if they aren't there.
-                            // This handles old cases created before the logic change in handleAddCase
-                            caseData.professionalIds.push(caseData.createdBy);
-                        }
-                    }
+
                     return caseData;
                 });
                 if (isMounted) setCases(casesList.sort(caseSorter));
@@ -297,8 +287,8 @@ const App: React.FC = () => {
         if (currentUser.role === 'admin') {
             return cases; // Admins see all cases
         }
-        // Technicians see cases they are assigned to or have an intervention assigned to them
-        return cases.filter(c => c.professionalIds?.includes(currentUser.id) || (c.interventions || []).some(i => i.createdBy === currentUser.id || i.assignedTo?.includes(currentUser.id)));
+        // Technicians see cases they are assigned to
+        return cases.filter(c => c.professionalIds?.includes(currentUser.id));
     }, [cases, currentUser]);
     
     const currentUserProfessional = useMemo(() => {
@@ -1368,7 +1358,7 @@ const App: React.FC = () => {
             case 'cases':
             default:
                 const activeCases = visibleCases.filter(c => c.status !== CaseStatus.Closed);
-                const closedCases = visibleCases.filter(c => c.status === CaseStatus.Closed);
+                const closedCases = cases.filter(c => c.status === CaseStatus.Closed);
                 const otherCases = cases.filter(c => c.status !== CaseStatus.Closed && (!c.professionalIds || !c.professionalIds.includes(currentUser.id)));
 
                 const searchFilter = (c: Case) => searchQuery
