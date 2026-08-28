@@ -173,7 +173,30 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         const pendingGeneralTasks = generalTasks.filter(t => !t.completed).length;
         const pendingTasksCount = pendingCaseTasks + pendingGeneralTasks;
         
-        const recentlyUpdated = cases.slice(0, 3);
+        // Find cases with notebook entries (interventions registered in the notebook)
+        const casesWithNotebookEntries: { caseItem: Case; latestNotebookDate: string }[] = [];
+
+        activeCases.forEach(c => {
+            const notebookInterventions = (c.interventions || []).filter(i => i.isRegistered);
+            if (notebookInterventions.length > 0) {
+                // Find the latest date among notebook interventions
+                const latestDate = notebookInterventions.reduce((latest, current) => {
+                    const currentTime = new Date(current.start).getTime();
+                    const latestTime = new Date(latest).getTime();
+                    return currentTime > latestTime ? current.start : latest;
+                }, notebookInterventions[0].start);
+
+                casesWithNotebookEntries.push({
+                    caseItem: c,
+                    latestNotebookDate: latestDate
+                });
+            }
+        });
+
+        // Sort by the latest notebook entry date descending, and take the top 5
+        casesWithNotebookEntries.sort((a, b) => new Date(b.latestNotebookDate).getTime() - new Date(a.latestNotebookDate).getTime());
+
+        const recentlyUpdated = casesWithNotebookEntries.slice(0, 5);
 
         return { pendingTasksCount, recentlyUpdated };
     }, [cases, generalTasks]);
@@ -476,16 +499,20 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                 <IoTimeOutline className="text-teal-600 text-xl" />
                                 <h3 className="font-semibold text-slate-800">Actualizados Recientemente</h3>
                             </div>
-                            <ul className="space-y-2 text-sm">
-                                {stats.recentlyUpdated.map(c => (
-                                    <li key={c.id} className="flex justify-between items-center">
-                                        <button onClick={() => onSelectCaseById(c.id)} className="text-teal-700 hover:underline font-medium truncate" title={`Abrir caso de ${c.name}`}>
-                                            {c.name}
-                                        </button>
-                                        <span className="text-slate-500 flex-shrink-0 ml-2">{timeSinceSpanish(c.lastUpdate)}</span>
-                                    </li>
-                                ))}
-                            </ul>
+                            {stats.recentlyUpdated.length > 0 ? (
+                                <ul className="space-y-2 text-sm">
+                                    {stats.recentlyUpdated.map(({ caseItem: c, latestNotebookDate }) => (
+                                        <li key={c.id} className="flex justify-between items-center">
+                                            <button onClick={() => onSelectCaseById(c.id)} className="text-teal-700 hover:underline font-medium truncate text-left" title={`Abrir caso de ${c.name}`}>
+                                                {c.name}
+                                            </button>
+                                            <span className="text-slate-500 flex-shrink-0 ml-2">{timeSinceSpanish(latestNotebookDate)}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-xs text-slate-400 italic">No hay casos con actuaciones en el cuaderno.</p>
+                            )}
                         </div>
                     </AnimatedItem>
                 </div>
