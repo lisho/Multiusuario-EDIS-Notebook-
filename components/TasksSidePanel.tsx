@@ -13,7 +13,8 @@ import {
     IoPeopleOutline,
     IoCheckmarkCircle,
     IoDocumentTextOutline,
-    IoListOutline
+    IoListOutline,
+    IoFolderOpenOutline
 } from 'react-icons/io5';
 import TechnicianAvatar from './TechnicianAvatar';
 
@@ -155,11 +156,13 @@ interface TaskItemProps {
     onToggle: () => void;
     onDelete: () => void;
     onConvertToEntry: () => void;
-    onUpdate: (updatedTask: Task) => void;
+    onUpdate: (updatedTask: Task, targetCaseId: string | null) => void;
     professionals: Professional[];
     currentUser: User | null;
     caseName?: string;
     onSelectCase?: () => void;
+    allCases?: Case[];
+    currentCaseId?: string | null;
 }
 
 const TaskItem: React.FC<TaskItemProps> = ({ 
@@ -171,11 +174,14 @@ const TaskItem: React.FC<TaskItemProps> = ({
     professionals, 
     currentUser,
     caseName, 
-    onSelectCase 
+    onSelectCase,
+    allCases = [],
+    currentCaseId = null
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(task.text);
     const [editAssignedTo, setEditAssignedTo] = useState<string[]>(task.assignedTo || (currentUser ? [currentUser.id] : []));
+    const [editCaseId, setEditCaseId] = useState<string>(currentCaseId || '');
 
     const assignedProfs = (task.assignedTo || [])
         .map(id => professionals.find(p => p.id === id))
@@ -186,11 +192,12 @@ const TaskItem: React.FC<TaskItemProps> = ({
         
     const handleSaveEdit = () => {
         if (editText.trim()) {
+            const targetCase = editCaseId.trim() ? editCaseId.trim() : null;
             onUpdate({ 
                 ...task, 
                 text: editText.trim(),
                 assignedTo: editAssignedTo.length > 0 ? editAssignedTo : (currentUser ? [currentUser.id] : [])
-            });
+            }, targetCase);
         }
         setIsEditing(false);
     };
@@ -218,6 +225,27 @@ const TaskItem: React.FC<TaskItemProps> = ({
                         placeholder="Descripción de la tarea..."
                     />
                 </div>
+
+                {allCases.length > 0 && (
+                    <div className="space-y-1">
+                        <label className="block text-[11px] font-semibold text-slate-600 flex items-center gap-1">
+                            <IoFolderOpenOutline className="text-xs text-teal-600" />
+                            Asignar a caso:
+                        </label>
+                        <select
+                            value={editCaseId}
+                            onChange={(e) => setEditCaseId(e.target.value)}
+                            className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-800 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                        >
+                            <option value="">📋 Tarea General (Sin caso asociado)</option>
+                            {allCases.map(c => (
+                                <option key={c.id} value={c.id}>
+                                    📁 {c.name} {c.nickname ? `(${c.nickname})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
 
                 <div className="pt-2 border-t border-slate-100">
                     <ProfessionalAssignSelector
@@ -306,10 +334,11 @@ const TaskItem: React.FC<TaskItemProps> = ({
                     onClick={() => {
                         setEditText(task.text);
                         setEditAssignedTo(task.assignedTo || (currentUser ? [currentUser.id] : []));
+                        setEditCaseId(currentCaseId || '');
                         setIsEditing(true);
                     }} 
                     className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-blue-50" 
-                    title="Editar y reasignar tarea"
+                    title="Editar, asignar caso y reasignar tarea"
                 >
                     <IoPencilOutline className="text-sm" />
                 </button>
@@ -337,27 +366,31 @@ const TaskItem: React.FC<TaskItemProps> = ({
 interface NoteItemProps {
     note: MyNote;
     caseId: string;
-    onUpdate: (updatedNote: MyNote) => void;
+    onUpdate: (updatedNote: MyNote, targetCaseId?: string) => void;
     onDelete: () => void;
     professionals?: Professional[];
     currentUser?: User | null;
     caseName?: string;
     onSelectCase?: () => void;
+    allCases?: Case[];
 }
 
 const NoteItem: React.FC<NoteItemProps> = ({ 
     note, 
+    caseId,
     onUpdate, 
     onDelete, 
     professionals = [], 
     currentUser,
     caseName,
-    onSelectCase
+    onSelectCase,
+    allCases = []
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(note.content);
     const [editColor, setEditColor] = useState<'yellow' | 'pink' | 'blue' | 'green'>(note.color || 'yellow');
     const [editAssignedTo, setEditAssignedTo] = useState<string[]>(note.assignedTo || (currentUser ? [currentUser.id] : []));
+    const [editCaseId, setEditCaseId] = useState<string>(caseId);
 
     const colorConfig = noteColorClasses[note.color || 'yellow'] || noteColorClasses.yellow;
 
@@ -380,7 +413,7 @@ const NoteItem: React.FC<NoteItemProps> = ({
                 content: editText.trim(),
                 color: editColor,
                 assignedTo: editAssignedTo.length > 0 ? editAssignedTo : (currentUser ? [currentUser.id] : [])
-            });
+            }, editCaseId || caseId);
         }
         setIsEditing(false);
     };
@@ -396,6 +429,26 @@ const NoteItem: React.FC<NoteItemProps> = ({
                     autoFocus
                     placeholder="Escribe la nota..."
                 />
+
+                {allCases.length > 0 && (
+                    <div className="space-y-1">
+                        <label className="block text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                            <IoFolderOpenOutline className="text-xs text-teal-600" />
+                            Asociar al caso:
+                        </label>
+                        <select
+                            value={editCaseId}
+                            onChange={(e) => setEditCaseId(e.target.value)}
+                            className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                        >
+                            {allCases.map(c => (
+                                <option key={c.id} value={c.id}>
+                                    📁 {c.name} {c.nickname ? `(${c.nickname})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 
                 <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-semibold text-slate-700">Color:</span>
@@ -538,6 +591,8 @@ interface TasksSidePanelProps {
     onDeleteNote?: (caseId: string, noteId: string) => void;
     onUpdateNote?: (caseId: string, note: MyNote) => void;
     onAddNote?: (caseId: string, content: string, color?: string, assignedTo?: string[]) => void;
+    onUpdateTaskWithCase?: (originalCaseId: string | null, targetCaseId: string | null, updatedTask: Task) => void;
+    onUpdateNoteWithCase?: (originalCaseId: string, targetCaseId: string, updatedNote: MyNote) => void;
 }
 
 const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
@@ -560,7 +615,9 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
         currentUser,
         onDeleteNote,
         onUpdateNote,
-        onAddNote
+        onAddNote,
+        onUpdateTaskWithCase,
+        onUpdateNoteWithCase
     } = props;
     
     // Creation State
@@ -579,6 +636,36 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
     const [filterTab, setFilterTab] = useState<'all' | 'assigned_to_me' | 'created_by_me' | 'general' | 'pending' | 'completed'>('all');
     
     const isOpen = mode !== 'closed';
+
+    const handleTaskUpdate = (originalCaseId: string | null, targetCaseId: string | null, updatedTask: Task) => {
+        if (onUpdateTaskWithCase) {
+            onUpdateTaskWithCase(originalCaseId, targetCaseId, updatedTask);
+        } else if (originalCaseId === targetCaseId) {
+            if (targetCaseId) {
+                onUpdateTask(targetCaseId, updatedTask);
+            } else {
+                onUpdateGeneralTask(updatedTask);
+            }
+        } else {
+            if (originalCaseId) {
+                onDeleteTask(originalCaseId, updatedTask.id);
+            } else {
+                onDeleteGeneralTask(updatedTask.id);
+            }
+            onAddTask(targetCaseId, updatedTask.text, updatedTask.assignedTo);
+        }
+    };
+
+    const handleNoteUpdate = (originalCaseId: string, targetCaseId: string, updatedNote: MyNote) => {
+        if (onUpdateNoteWithCase) {
+            onUpdateNoteWithCase(originalCaseId, targetCaseId, updatedNote);
+        } else if (originalCaseId === targetCaseId) {
+            if (onUpdateNote) onUpdateNote(targetCaseId, updatedNote);
+        } else {
+            if (onDeleteNote) onDeleteNote(originalCaseId, updatedNote.id);
+            if (onAddNote) onAddNote(targetCaseId, updatedNote.content, updatedNote.color, updatedNote.assignedTo);
+        }
+    };
 
     // Reset / initialize assignee selection when mode or currentUser changes
     useEffect(() => {
@@ -858,12 +945,13 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                                     key={note.id}
                                                     note={note}
                                                     caseId={caseItem.id}
-                                                    onUpdate={(updated) => onUpdateNote && onUpdateNote(caseItem.id, updated)}
+                                                    onUpdate={(updated, targetCaseId) => handleNoteUpdate(caseItem.id, targetCaseId || caseItem.id, updated)}
                                                     onDelete={() => onDeleteNote && onDeleteNote(caseItem.id, note.id)}
                                                     professionals={professionals}
                                                     currentUser={currentUser}
                                                     caseName={caseItem.name}
                                                     onSelectCase={() => { onSelectCaseById(caseItem.id, 'myNotes'); onClose(); }}
+                                                    allCases={allCases}
                                                 />
                                             ))}
                                         </div>
@@ -890,9 +978,11 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                         onToggle={() => onToggleTask(caseData.id, task.id)} 
                                         onDelete={() => onDeleteTask(caseData.id, task.id)} 
                                         onConvertToEntry={() => { onTaskToEntry(task); onClose(); }} 
-                                        onUpdate={(updatedTask) => onUpdateTask(caseData.id, updatedTask)}
+                                        onUpdate={(updatedTask, targetCaseId) => handleTaskUpdate(caseData.id, targetCaseId, updatedTask)}
                                         professionals={edisTechnicians} 
                                         currentUser={currentUser}
+                                        allCases={allCases}
+                                        currentCaseId={caseData.id}
                                     />
                                 ))
                             )}
@@ -919,9 +1009,11 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                                 onToggle={() => onToggleGeneralTask(task.id)} 
                                                 onDelete={() => onDeleteGeneralTask(task.id)} 
                                                 onConvertToEntry={() => {}} 
-                                                onUpdate={onUpdateGeneralTask}
+                                                onUpdate={(updatedTask, targetCaseId) => handleTaskUpdate(null, targetCaseId, updatedTask)}
                                                 professionals={edisTechnicians} 
                                                 currentUser={currentUser}
+                                                allCases={allCases}
+                                                currentCaseId={null}
                                             />
                                         ))}
                                     </div>
@@ -958,9 +1050,11 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                                     onToggle={() => onToggleTask(caseId, task.id)} 
                                                     onDelete={() => onDeleteTask(caseId, task.id)} 
                                                     onConvertToEntry={() => { onSelectCaseById(caseId, 'tasks'); onTaskToEntry(task); }} 
-                                                    onUpdate={(updatedTask) => onUpdateTask(caseId, updatedTask)}
+                                                    onUpdate={(updatedTask, targetCaseId) => handleTaskUpdate(caseId, targetCaseId, updatedTask)}
                                                     professionals={edisTechnicians} 
                                                     currentUser={currentUser}
+                                                    allCases={allCases}
+                                                    currentCaseId={caseId}
                                                 />
                                             ))}
                                         </div>

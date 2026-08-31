@@ -831,9 +831,9 @@ const App: React.FC = () => {
                     const newTask: Task = {
                         id: itemId,
                         text: data.content,
-                        completed: data.isCompleted || false,
-                        createdBy: currentUser.id,
-                        assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : [currentUser.id]
+                        completed: data.isCompleted !== undefined ? data.isCompleted : (prevLoc?.item?.completed || false),
+                        createdBy: prevLoc?.item?.createdBy || currentUser.id,
+                        assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : (prevLoc?.item?.assignedTo || [currentUser.id])
                     };
                     const targetTasks = (targetCase.tasks || []).filter(t => t.id !== itemId);
                     await handleUpdateCase({ ...targetCase, tasks: [...targetTasks, newTask] });
@@ -844,9 +844,9 @@ const App: React.FC = () => {
             const newGeneralTask: Task = {
                 id: itemId,
                 text: data.content,
-                completed: data.isCompleted || false,
-                createdBy: currentUser.id,
-                assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : [currentUser.id]
+                completed: data.isCompleted !== undefined ? data.isCompleted : (prevLoc?.item?.completed || false),
+                createdBy: prevLoc?.item?.createdBy || currentUser.id,
+                assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : (prevLoc?.item?.assignedTo || [currentUser.id])
             };
             try {
                 const docRef = doc(db, "generalTasks", itemId);
@@ -856,6 +856,28 @@ const App: React.FC = () => {
                 console.error("Error moving task to general:", error);
             }
         }
+    };
+
+    const handleUpdateTaskWithCase = async (originalCaseId: string | null, targetCaseId: string | null, updatedTask: Task) => {
+        await handleSaveUnifiedNote({
+            id: updatedTask.id,
+            type: 'task',
+            content: updatedTask.text,
+            caseId: targetCaseId,
+            isCompleted: updatedTask.completed,
+            assignedTo: updatedTask.assignedTo
+        });
+    };
+
+    const handleUpdateNoteWithCase = async (originalCaseId: string, targetCaseId: string, updatedNote: MyNote) => {
+        await handleSaveUnifiedNote({
+            id: updatedNote.id,
+            type: 'note',
+            content: updatedNote.content,
+            color: updatedNote.color,
+            caseId: targetCaseId,
+            assignedTo: updatedNote.assignedTo
+        });
     };
 
     const handleDeleteUnifiedItem = async (id: string, type: 'note' | 'task', caseId: string | null) => {
@@ -1920,6 +1942,8 @@ const App: React.FC = () => {
                 onDeleteNote={handleDeleteNote}
                 onUpdateNote={handleUpdateNote}
                 onAddNote={handleAddNoteToCase}
+                onUpdateTaskWithCase={handleUpdateTaskWithCase}
+                onUpdateNoteWithCase={handleUpdateNoteWithCase}
             />
              <ConfirmationModal
                 isOpen={!!confirmationState?.isOpen}
