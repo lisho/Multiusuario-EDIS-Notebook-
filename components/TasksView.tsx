@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Task, Professional, Case, User, ProfessionalRole } from '../types';
 import { IoAddOutline, IoTrashOutline, IoArrowRedoOutline, IoPencilOutline, IoPersonOutline, IoCheckmarkCircle } from 'react-icons/io5';
+import TechnicianAvatar from './TechnicianAvatar';
 
 interface TasksViewProps {
     tasks: Task[];
@@ -78,17 +79,13 @@ const TaskItem: React.FC<{
                 {assignedProfs.length > 0 && (
                     <div className="flex items-center gap-1 mt-1.5 -space-x-1">
                         {assignedProfs.map(p => (
-                            <div 
-                                key={p.id} 
-                                className="w-5 h-5 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-[9px] border border-white overflow-hidden shadow-2xs" 
-                                title={`Asignado a: ${p.name}`}
-                            >
-                                {p.avatar ? (
-                                    <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
-                                ) : (
-                                    <span>{getInitials(p.name)}</span>
-                                )}
-                            </div>
+                            <TechnicianAvatar
+                                key={p.id}
+                                professional={p}
+                                size="sm"
+                                prefix="Asignado/a a:"
+                                tooltipPosition="top"
+                            />
                         ))}
                     </div>
                 )}
@@ -155,8 +152,20 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
     const isOnlyMeSelected = currentUser?.id && assignedTo.length === 1 && assignedTo[0] === currentUser.id;
     const isAllTeamSelected = teamProfessionals.length > 0 && assignedTo.length === teamProfessionals.length;
 
-    const pendingTasks = tasks.filter(t => !t.completed);
-    const completedTasks = tasks.filter(t => t.completed);
+    // Filter tasks based on role: Admin sees all tasks; normal technicians only see tasks they created OR assigned to them
+    const visibleTasks = useMemo(() => {
+        if (!currentUser) return [];
+        if (currentUser.role === 'admin') return tasks;
+        return tasks.filter(t => {
+            const isAssigned = t.assignedTo?.includes(currentUser.id);
+            const isCreator = t.createdBy === currentUser.id;
+            const isLegacy = (!t.assignedTo || t.assignedTo.length === 0) && isCreator;
+            return isAssigned || isCreator || isLegacy;
+        });
+    }, [tasks, currentUser]);
+
+    const pendingTasks = visibleTasks.filter(t => !t.completed);
+    const completedTasks = visibleTasks.filter(t => t.completed);
 
     return (
         <div className="space-y-6">
@@ -205,7 +214,7 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
                                                 : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
                                         }`}
                                     >
-                                        Todo el equipo
+                                        Todos los técnicos
                                     </button>
                                 )}
                             </div>

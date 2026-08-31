@@ -306,7 +306,13 @@ const App: React.FC = () => {
 
     const currentUserGeneralTasks = useMemo(() => {
         if (!currentUser) return [];
-        return generalTasks.filter(task => task.createdBy === currentUser.id);
+        if (currentUser.role === 'admin') return generalTasks;
+        return generalTasks.filter(task => {
+            const isAssigned = task.assignedTo?.includes(currentUser.id);
+            const isCreator = task.createdBy === currentUser.id;
+            const isLegacy = (!task.assignedTo || task.assignedTo.length === 0) && isCreator;
+            return isAssigned || isCreator || isLegacy;
+        });
     }, [generalTasks, currentUser]);
 
     const handleSetView = (view: 'cases' | 'admin' | 'calendar' | 'stats' | 'allNotes') => {
@@ -1612,6 +1618,7 @@ const App: React.FC = () => {
                                         onDragStart={() => setDraggedItem(caseData)}
                                         onDragEnd={() => setDraggedItem(null)}
                                         isDragging={draggedItem?.id === caseData.id}
+                                        currentUser={currentUser}
                                     />
                                 </div>
                             </AnimatedSection>
@@ -1714,6 +1721,7 @@ const App: React.FC = () => {
                                                             onTogglePin={() => handleTogglePin(caseData)}
                                                             onAddQuickNote={handleOpenQuickNoteModal}
                                                             draggable={false}
+                                                            currentUser={currentUser}
                                                         />
                                                     </AnimatedSection>
                                                 ))}
@@ -1747,6 +1755,7 @@ const App: React.FC = () => {
                                                             onTogglePin={() => handleTogglePin(caseData)}
                                                             onAddQuickNote={handleOpenQuickNoteModal}
                                                             draggable={false}
+                                                            currentUser={currentUser}
                                                         />
                                                     </AnimatedSection>
                                                 ))}

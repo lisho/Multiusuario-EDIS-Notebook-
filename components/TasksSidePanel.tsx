@@ -15,6 +15,7 @@ import {
     IoDocumentTextOutline,
     IoListOutline
 } from 'react-icons/io5';
+import TechnicianAvatar from './TechnicianAvatar';
 
 const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
@@ -106,7 +107,7 @@ const ProfessionalAssignSelector: React.FC<ProfessionalAssignSelectorProps> = ({
                                     : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
                             }`}
                         >
-                            Todo el equipo
+                            Todos los técnicos
                         </button>
                     )}
                 </div>
@@ -281,19 +282,15 @@ const TaskItem: React.FC<TaskItemProps> = ({
                     {assignedProfs.length > 0 && (
                         <div className="flex items-center gap-1 pl-1">
                             <span className="text-[10px] text-slate-400 font-medium">Para:</span>
-                            <div className="flex -space-x-1">
+                            <div className="flex -space-x-1 items-center">
                                 {assignedProfs.map(p => (
-                                    <div 
-                                        key={p.id} 
-                                        className="w-4 h-4 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-[7px] border border-white overflow-hidden shadow-2xs" 
-                                        title={`Asignado a: ${p.name}`}
-                                    >
-                                        {p.avatar ? (
-                                            <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <span>{getInitials(p.name)}</span>
-                                        )}
-                                    </div>
+                                    <TechnicianAvatar
+                                        key={p.id}
+                                        professional={p}
+                                        size="xs"
+                                        prefix="Asignado/a a:"
+                                        tooltipPosition="top"
+                                    />
                                 ))}
                             </div>
                             <span className="text-[10px] text-slate-600 font-medium truncate max-w-[120px]">
@@ -452,13 +449,12 @@ const NoteItem: React.FC<NoteItemProps> = ({
                 <div className="flex flex-wrap items-center gap-1">
                     {isFromOther && (
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/90 text-teal-800 text-[10px] font-semibold shadow-2xs">
-                            <span className="w-3.5 h-3.5 rounded-full bg-teal-200 text-teal-900 flex items-center justify-center text-[7px] font-bold overflow-hidden">
-                                {creatorProf?.avatar ? (
-                                    <img src={creatorProf.avatar} alt={creatorProf.name} className="w-full h-full object-cover" />
-                                ) : (
-                                    getInitials(creatorProf?.name || 'T')
-                                )}
-                            </span>
+                            <TechnicianAvatar
+                                professional={creatorProf || { name: 'Compañero/a' }}
+                                size="xs"
+                                prefix="De:"
+                                tooltipPosition="top"
+                            />
                             De: {creatorProf?.name?.split(' ')[0] || 'Compañero/a'}
                         </span>
                     )}
@@ -499,19 +495,15 @@ const NoteItem: React.FC<NoteItemProps> = ({
             <div className="mt-2.5 pt-1.5 border-t border-black/5 flex justify-between items-center text-[11px] text-slate-500">
                 <div className="flex items-center gap-1">
                     {assignedProfs.length > 0 && (
-                        <div className="flex -space-x-1">
+                        <div className="flex -space-x-1 items-center">
                             {assignedProfs.map(p => (
-                                <div 
-                                    key={p.id} 
-                                    className="w-4 h-4 rounded-full bg-white text-slate-700 flex items-center justify-center font-bold text-[8px] border border-slate-200 overflow-hidden shadow-2xs" 
-                                    title={`Destinatario: ${p.name}`}
-                                >
-                                    {p.avatar ? (
-                                        <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
-                                    ) : (
-                                        <span>{getInitials(p.name)}</span>
-                                    )}
-                                </div>
+                                <TechnicianAvatar
+                                    key={p.id}
+                                    professional={p}
+                                    size="xs"
+                                    prefix="Destinatario:"
+                                    tooltipPosition="top"
+                                />
                             ))}
                         </div>
                     )}
@@ -732,7 +724,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                     </span>
                                 </div>
                                 <p className="text-xs text-slate-500">
-                                    {mode === 'notes' ? 'Notas de colores ordenadas y asignadas por casos' : 'Gestiona y asigna tareas del equipo'}
+                                    {mode === 'notes' ? 'Notas de colores ordenadas y asignadas por casos' : 'Gestiona y asigna tareas'}
                                 </p>
                             </div>
                         </div>
@@ -888,7 +880,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                 <div className="text-center text-slate-500 py-12 px-4 bg-white rounded-xl border border-dashed border-slate-200">
                                     <IoListOutline className="text-4xl text-slate-300 mx-auto mb-2" />
                                     <p className="text-sm font-semibold text-slate-700">No hay tareas en este caso</p>
-                                    <p className="text-xs text-slate-400 mt-1">Crea una nueva tarea abajo asignada al equipo o a ti.</p>
+                                    <p className="text-xs text-slate-400 mt-1">Crea una nueva tarea abajo asignada a un técnico o a ti.</p>
                                 </div>
                             ) : (
                                 singleModeTasks.map(task => (

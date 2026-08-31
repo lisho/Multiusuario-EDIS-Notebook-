@@ -145,7 +145,7 @@ const QuickNoteModal: React.FC<QuickNoteModalProps> = ({
                       onClick={handleSelectAllTeam}
                       className={`text-xs font-semibold px-2 py-0.5 rounded transition-colors ${isAllSelected ? 'bg-indigo-100 text-indigo-800 border border-indigo-300' : 'text-slate-500 hover:text-indigo-600 bg-slate-100'}`}
                     >
-                      Todo el equipo
+                      Todos los técnicos
                     </button>
                   )}
                 </div>

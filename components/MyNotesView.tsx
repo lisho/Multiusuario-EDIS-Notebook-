@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Case, MyNote, Professional, User } from '../types';
 import NoteEditorModal from './NoteEditorModal';
 import { IoJournalOutline, IoAddOutline, IoPencilOutline, IoTrashOutline, IoPersonOutline, IoSendOutline } from 'react-icons/io5';
+import TechnicianAvatar from './TechnicianAvatar';
 
 interface MyNotesViewProps {
   caseData: Case;
@@ -57,20 +58,19 @@ const PostItCard: React.FC<{
             {/* Creator / Recipient badges */}
             <div className="mb-2 pr-12">
                 {isFromOther && (
-                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/80 text-teal-800 text-xs font-semibold shadow-xs">
-                        <div className="w-4 h-4 rounded-full bg-teal-200 text-teal-900 flex items-center justify-center text-[9px] font-bold overflow-hidden">
-                            {creatorProf?.avatar ? (
-                                <img src={creatorProf.avatar} alt={creatorProf.name} className="w-full h-full object-cover" />
-                            ) : (
-                                <span>{getInitials(creatorProf?.name || 'T')}</span>
-                            )}
-                        </div>
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/90 text-teal-800 text-xs font-semibold shadow-xs">
+                        <TechnicianAvatar
+                            professional={creatorProf || { name: 'Compañero/a' }}
+                            size="xs"
+                            prefix="De:"
+                            tooltipPosition="top"
+                        />
                         <span>De: {creatorProf?.name || 'Compañero/a'}</span>
                     </div>
                 )}
 
                 {isSentToOthers && (
-                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/80 text-indigo-800 text-xs font-semibold shadow-xs">
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/90 text-indigo-800 text-xs font-semibold shadow-xs">
                         <IoSendOutline className="text-xs" />
                         <span>Para: {assignedProfs.map(p => p.name).join(', ')}</span>
                     </div>
@@ -80,15 +80,15 @@ const PostItCard: React.FC<{
             <p className="text-slate-800 whitespace-pre-wrap min-h-[90px] text-sm leading-relaxed">{note.content}</p>
             
             <div className="flex justify-between items-center mt-3 pt-2 border-t border-black/5 text-xs text-slate-500">
-                <div className="flex -space-x-1">
+                <div className="flex -space-x-1 items-center">
                     {assignedProfs.map(p => (
-                        <div key={p.id} className="w-5 h-5 rounded-full bg-white/90 text-slate-700 flex items-center justify-center font-bold text-[9px] border border-slate-200 overflow-hidden" title={`Asignada a ${p.name}`}>
-                            {p.avatar ? (
-                                <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
-                            ) : (
-                                <span>{getInitials(p.name)}</span>
-                            )}
-                        </div>
+                        <TechnicianAvatar
+                            key={p.id}
+                            professional={p}
+                            size="sm"
+                            prefix="Asignada a:"
+                            tooltipPosition="top"
+                        />
                     ))}
                 </div>
                 <span>{new Date(note.createdAt).toLocaleDateString('es-ES')}</span>

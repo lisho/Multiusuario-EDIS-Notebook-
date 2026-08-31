@@ -21,6 +21,7 @@ import {
     IoCloseOutline
 } from 'react-icons/io5';
 import UnifiedNoteModal, { UnifiedItemData } from './UnifiedNoteModal';
+import TechnicianAvatar from './TechnicianAvatar';
 
 interface AllNotesViewProps {
     cases: Case[];
@@ -213,8 +214,8 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
                     if (item.createdBy !== currentUser.id) return false;
                 }
 
-                // 4. Technician Filter
-                if (selectedTechnicianId !== 'all') {
+                // 4. Technician Filter (Admin only)
+                if (currentUser.role === 'admin' && selectedTechnicianId !== 'all') {
                     const isAssigned = item.assignedTo?.includes(selectedTechnicianId);
                     const isCreator = item.createdBy === selectedTechnicianId;
                     if (!isAssigned && !isCreator) return false;
@@ -254,7 +255,7 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
     const hasActiveFilters = searchQuery !== '' || 
         typeFilter !== 'all' || 
         assignmentFilter !== 'all' || 
-        selectedTechnicianId !== 'all' || 
+        (currentUser.role === 'admin' && selectedTechnicianId !== 'all') || 
         selectedCaseId !== 'all' || 
         selectedColor !== 'all';
 
@@ -416,7 +417,7 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
                 </div>
 
                 {/* Secondary Filter Dropdowns & Pills */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t border-slate-100">
+                <div className={`grid grid-cols-1 sm:grid-cols-2 ${currentUser.role === 'admin' ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-3 pt-3 border-t border-slate-100`}>
                     {/* Assignment Filter */}
                     <div>
                         <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
@@ -428,29 +429,31 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
                             className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-2 bg-slate-50 text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-500"
                         >
                             <option value="all">Todas las notas y tareas</option>
-                            <option value="assigned_to_me">Asignadas a mí (o a mi equipo)</option>
+                            <option value="assigned_to_me">Asignadas a mí</option>
                             <option value="created_by_me">Creadas por mí</option>
                         </select>
                     </div>
 
-                    {/* Technician EDIS Filter */}
-                    <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                            Técnico/a EDIS
-                        </label>
-                        <select
-                            value={selectedTechnicianId}
-                            onChange={(e) => setSelectedTechnicianId(e.target.value)}
-                            className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-2 bg-slate-50 text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                        >
-                            <option value="all">Todos los técnicos</option>
-                            {edisTechnicians.map(t => (
-                                <option key={t.id} value={t.id}>
-                                    👤 {t.name} {t.id === currentUser.id ? '(Tú)' : ''}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                    {/* Technician EDIS Filter (Admin only) */}
+                    {currentUser.role === 'admin' && (
+                        <div>
+                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                Técnico/a EDIS
+                            </label>
+                            <select
+                                value={selectedTechnicianId}
+                                onChange={(e) => setSelectedTechnicianId(e.target.value)}
+                                className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-2 bg-slate-50 text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                            >
+                                <option value="all">Todos los técnicos</option>
+                                {edisTechnicians.map(t => (
+                                    <option key={t.id} value={t.id}>
+                                        👤 {t.name} {t.id === currentUser.id ? '(Tú)' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     {/* Case Filter */}
                     <div>
@@ -651,20 +654,19 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
                                                 {/* Badges for Sender / Recipient */}
                                                 <div className="mb-2.5 pr-14 flex flex-wrap items-center gap-1.5">
                                                     {isFromOther && (
-                                                        <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/80 text-teal-800 text-[11px] font-semibold border border-teal-200 shadow-2xs">
-                                                            <div className="w-3.5 h-3.5 rounded-full bg-teal-200 text-teal-900 flex items-center justify-center text-[8px] font-bold overflow-hidden">
-                                                                {creatorProf?.avatar ? (
-                                                                    <img src={creatorProf.avatar} alt={creatorProf.name} className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    <span>{getInitials(creatorProf?.name || 'T')}</span>
-                                                                )}
-                                                            </div>
+                                                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/90 text-teal-800 text-[11px] font-semibold border border-teal-200 shadow-2xs">
+                                                            <TechnicianAvatar
+                                                                professional={creatorProf || { name: 'Compañero' }}
+                                                                size="xs"
+                                                                prefix="De:"
+                                                                tooltipPosition="top"
+                                                            />
                                                             <span>De: {creatorProf?.name?.split(' ')[0] || 'Compañero'}</span>
                                                         </div>
                                                     )}
 
                                                     {isSentToOthers && (
-                                                        <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/80 text-indigo-800 text-[11px] font-semibold border border-indigo-200 shadow-2xs">
+                                                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/90 text-indigo-800 text-[11px] font-semibold border border-indigo-200 shadow-2xs">
                                                             <IoSendOutline className="text-[10px]" />
                                                             <span>Para: {assignedProfs.map(p => p.name.split(' ')[0]).join(', ')}</span>
                                                         </div>
@@ -705,19 +707,16 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
 
                                                 {/* Assigned Technicians Avatars */}
                                                 {assignedProfs.length > 0 && (
-                                                    <div className="flex -space-x-1 pl-2">
+                                                    <div className="flex -space-x-1 pl-2 items-center">
                                                         {assignedProfs.map(p => (
-                                                            <div 
-                                                                key={p.id} 
-                                                                className="w-5 h-5 rounded-full bg-white text-slate-700 flex items-center justify-center font-bold text-[9px] border border-slate-200 overflow-hidden shadow-2xs" 
-                                                                title={`Asignado a: ${p.name}`}
-                                                            >
-                                                                {p.avatar ? (
-                                                                    <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    <span>{getInitials(p.name)}</span>
-                                                                )}
-                                                            </div>
+                                                            <TechnicianAvatar
+                                                                key={p.id}
+                                                                professional={p}
+                                                                size="sm"
+                                                                prefix="Asignado/a a:"
+                                                                isCurrentUser={p.id === currentUser.id}
+                                                                tooltipPosition="top"
+                                                            />
                                                         ))}
                                                     </div>
                                                 )}

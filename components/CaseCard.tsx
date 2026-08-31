@@ -1,10 +1,11 @@
 import React from 'react';
-import { Case, CaseStatus, Professional, DashboardView, ProfessionalRole } from '../types';
+import { Case, CaseStatus, Professional, DashboardView, ProfessionalRole, User } from '../types';
 import {
     IoCheckboxOutline, IoAddCircleOutline,
     IoBookOutline, IoJournalOutline
 } from 'react-icons/io5';
 import { BsPinAngle, BsPinAngleFill } from 'react-icons/bs';
+import TechnicianAvatar from './TechnicianAvatar';
 
 interface CaseCardProps {
     caseData: Case;
@@ -18,6 +19,7 @@ interface CaseCardProps {
     onDragStart?: () => void;
     onDragEnd?: () => void;
     isDragging?: boolean;
+    currentUser?: User | null;
 }
 
 const getStatusStyles = (status: CaseStatus): { bg: string; text: string; footerBg: string; } => {
@@ -37,12 +39,24 @@ const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').su
 
 const CaseCard: React.FC<CaseCardProps> = ({
     caseData, professionals, onSelect, onOpenTasks, onSetStatusFilter, onTogglePin, onAddQuickNote,
-    draggable, onDragStart, onDragEnd, isDragging
+    draggable, onDragStart, onDragEnd, isDragging, currentUser
 }) => {
     const { bg, text, footerBg } = getStatusStyles(caseData.status);
-    const pendingTasks = caseData.tasks.filter(t => !t.completed).length;
-    const notebookEntries = caseData.interventions.filter(i => i.isRegistered).length;
-    const notesCount = Array.isArray(caseData.myNotes) ? caseData.myNotes.length : (caseData.myNotes ? 1 : 0);
+
+    const isVisibleToUser = (item: { createdBy?: string; assignedTo?: string[] }) => {
+        if (!currentUser) return true;
+        if (currentUser.role === 'admin') return true;
+        const isAssigned = item.assignedTo?.includes(currentUser.id);
+        const isCreator = item.createdBy === currentUser.id;
+        const isLegacy = (!item.assignedTo || item.assignedTo.length === 0) && isCreator;
+        return isAssigned || isCreator || isLegacy;
+    };
+
+    const pendingTasks = (caseData.tasks || []).filter(isVisibleToUser).filter(t => !t.completed).length;
+    const notebookEntries = (caseData.interventions || []).filter(i => i.isRegistered).length;
+    const notesCount = Array.isArray(caseData.myNotes) 
+        ? caseData.myNotes.filter(isVisibleToUser).length 
+        : (caseData.myNotes ? 1 : 0);
 
     const assignedProfessionals = (caseData.professionalIds || [])
         .map(id => professionals.find(p => p.id === id))
@@ -111,15 +125,15 @@ const CaseCard: React.FC<CaseCardProps> = ({
                     {edisTechnicians.length > 0 && (
                          <div className="flex items-center gap-3">
                             <span className="text-xs font-semibold text-slate-500 w-10 flex-shrink-0">EDIS</span>
-                            <div className="flex -space-x-2">
+                            <div className="flex -space-x-1.5">
                                 {edisTechnicians.map(p => (
-                                     <div key={p.id} className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs border-2 border-white overflow-hidden transition-transform duration-200 hover:scale-150 hover:z-10" title={p.name}>
-                                        {p.avatar ? (
-                                            <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <span>{getInitials(p.name)}</span>
-                                        )}
-                                    </div>
+                                    <TechnicianAvatar
+                                        key={p.id}
+                                        professional={p}
+                                        size="lg"
+                                        prefix="Técnico/a EDIS:"
+                                        tooltipPosition="top"
+                                    />
                                 ))}
                             </div>
                         </div>
@@ -127,15 +141,15 @@ const CaseCard: React.FC<CaseCardProps> = ({
                     {socialWorkers.length > 0 && (
                         <div className="flex items-center gap-3">
                             <span className="text-xs font-semibold text-slate-500 w-10 flex-shrink-0">CEAS</span>
-                            <div className="flex -space-x-2">
+                            <div className="flex -space-x-1.5">
                                 {socialWorkers.map(p => (
-                                    <div key={p.id} className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-xs border-2 border-white overflow-hidden transition-transform duration-200 hover:scale-150 hover:z-10" title={p.name}>
-                                        {p.avatar ? (
-                                            <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <span>{getInitials(p.name)}</span>
-                                        )}
-                                    </div>
+                                    <TechnicianAvatar
+                                        key={p.id}
+                                        professional={p}
+                                        size="lg"
+                                        prefix="CEAS:"
+                                        tooltipPosition="top"
+                                    />
                                 ))}
                             </div>
                         </div>

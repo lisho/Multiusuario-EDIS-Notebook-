@@ -160,7 +160,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose, onAddTask,
                         : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
                     }`}
                   >
-                    Todo el equipo EDIS
+                    Todos los técnicos EDIS
                   </button>
                 )}
               </div>
