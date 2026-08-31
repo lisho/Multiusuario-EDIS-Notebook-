@@ -63,9 +63,18 @@ const AnimatedSection: React.FC<{ children: React.ReactNode; delay: number; clas
     );
 };
 
-const caseSorter = (a: Case, b: Case): number => {
-    const aPinned = a.isPinned ?? false;
-    const bPinned = b.isPinned ?? false;
+const getIsCasePinnedForUser = (c: Case, userId?: string, userRole?: 'admin' | 'tecnico'): boolean => {
+    if (!userId) return !!c.isPinned;
+    if (c.pinnedBy && Array.isArray(c.pinnedBy)) {
+        return c.pinnedBy.includes(userId);
+    }
+    // Fallback for legacy data where only isPinned boolean exists
+    return !!c.isPinned;
+};
+
+const getCaseSorter = (userId?: string, userRole?: 'admin' | 'tecnico') => (a: Case, b: Case): number => {
+    const aPinned = getIsCasePinnedForUser(a, userId, userRole);
+    const bPinned = getIsCasePinnedForUser(b, userId, userRole);
     if (aPinned !== bPinned) {
         return aPinned ? -1 : 1; // Pinned cases come first
     }
@@ -133,6 +142,7 @@ const App: React.FC = () => {
             role: professional.systemRole,
         };
         setCurrentUser(user);
+        setCases(prevCases => [...prevCases].sort(getCaseSorter(user.id, user.role)));
     };
 
     const handleLogout = () => {
@@ -226,7 +236,10 @@ const App: React.FC = () => {
 
                     return caseData;
                 });
-                if (isMounted) setCases(casesList.sort(caseSorter));
+                if (isMounted) {
+                    const sorter = getCaseSorter(currentUser?.id, currentUser?.role);
+                    setCases(casesList.sort(sorter));
+                }
 
                 const toolsSnapshot = await getDocs(collection(db, "adminTools"));
                 const toolsList = toolsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AdminTool[];
@@ -345,7 +358,8 @@ const App: React.FC = () => {
         try {
             const docRef = await addDoc(collection(db, "cases"), newCaseDataForDb);
             const newCase: Case = { id: docRef.id, ...newCaseDataForDb };
-            setCases(prevCases => [newCase, ...prevCases].sort(caseSorter));
+            const sorter = getCaseSorter(currentUser?.id, currentUser?.role);
+            setCases(prevCases => [newCase, ...prevCases].sort(sorter));
             setIsNewCaseModalOpen(false);
             setSelectedCase(newCase);
         } catch (error) {
@@ -358,7 +372,7 @@ const App: React.FC = () => {
         const caseRef = doc(db, "cases", caseId);
         const { id, ...caseToUpdate } = updatedCase;
         // Don't update lastUpdate on pin/reorder to avoid jumping to top
-        const isMinorUpdate = Object.keys(caseToUpdate).every(key => ['isPinned', 'orderIndex'].includes(key));
+        const isMinorUpdate = Object.keys(caseToUpdate).every(key => ['isPinned', 'pinnedBy', 'orderIndex'].includes(key));
         const finalCaseData = { ...caseToUpdate, lastUpdate: isMinorUpdate ? updatedCase.lastUpdate : new Date().toISOString() };
     
         // Sanitize the data to remove any fields with `undefined` values, which Firestore doesn't support.
@@ -368,9 +382,10 @@ const App: React.FC = () => {
             await updateDoc(caseRef, sanitizedData);
             
             const fullyUpdatedCaseWithTimestamp = { ...updatedCase, lastUpdate: finalCaseData.lastUpdate };
+            const sorter = getCaseSorter(currentUser?.id, currentUser?.role);
     
             const newCases = cases.map(c => c.id === caseId ? fullyUpdatedCaseWithTimestamp : c)
-                                .sort(caseSorter);
+                                .sort(sorter);
             setCases(newCases);
     
             if (selectedCase?.id === caseId) {
@@ -1029,7 +1044,8 @@ const App: React.FC = () => {
                         newCases[caseIndex] = {...newCases[caseIndex], interventions: [...(newCases[caseIndex].interventions || []), finalIntervention], lastUpdate: new Date().toISOString()};
                     }
                 }
-                return newCases.sort(caseSorter);
+                const sorter = getCaseSorter(currentUser?.id, currentUser?.role);
+                return newCases.sort(sorter);
             });
 
             setGeneralInterventions(prevGeneral => {
@@ -1104,7 +1120,8 @@ const App: React.FC = () => {
                         }
                     }
                 });
-                return newCases.sort(caseSorter);
+                const sorter = getCaseSorter(currentUser?.id, currentUser?.role);
+                return newCases.sort(sorter);
             });
 
             if (hasGeneral) {
@@ -1217,6 +1234,7 @@ const App: React.FC = () => {
 
         setGeneralInterventions(prev => [...prev, ...newGeneralInterventions]);
         
+        const sorter = getCaseSorter(currentUser?.id, currentUser?.role);
         const newCases = cases.map(c => {
             if (caseUpdates.has(c.id)) {
                 return {
@@ -1226,7 +1244,7 @@ const App: React.FC = () => {
                 };
             }
             return c;
-        }).sort(caseSorter);
+        }).sort(sorter);
 
         setCases(newCases);
 
@@ -1311,7 +1329,8 @@ const App: React.FC = () => {
     
         newGeneralInterventions = newGeneralInterventions.map(i => generalUpdates.get(i.id) || i);
         
-        setCases(newCases.sort(caseSorter));
+        const sorter = getCaseSorter(currentUser?.id, currentUser?.role);
+        setCases(newCases.sort(sorter));
         setGeneralInterventions(newGeneralInterventions);
     
         if (selectedCase) {
@@ -1363,7 +1382,8 @@ const App: React.FC = () => {
                 newCases[caseIndex] = { ...targetCase, interventions: updatedInterventions, lastUpdate: new Date().toISOString() };
             }
         });
-        setCases(newCases.sort(caseSorter));
+        const sorter = getCaseSorter(currentUser?.id, currentUser?.role);
+        setCases(newCases.sort(sorter));
     
         const generalDeletesSet = new Set(generalDeletes);
         setGeneralInterventions(prev => prev.filter(i => !generalDeletesSet.has(i.id)));
@@ -1375,32 +1395,68 @@ const App: React.FC = () => {
     };
 
     const handleTogglePin = (caseToToggle: Case) => {
-        const activeCases = cases.filter(c => c.status !== CaseStatus.Closed);
-        const firstUnpinnedIndex = activeCases.findIndex(c => !c.isPinned);
+        if (!currentUser) return;
+        const currentSorter = getCaseSorter(currentUser.id, currentUser.role);
+        const activeCases = cases.filter(c => c.status !== CaseStatus.Closed).sort(currentSorter);
+        
+        const isCurrentlyPinned = getIsCasePinnedForUser(caseToToggle, currentUser.id, currentUser.role);
+        const isPinning = !isCurrentlyPinned;
+
+        let currentPinnedBy: string[];
+        if (caseToToggle.pinnedBy && Array.isArray(caseToToggle.pinnedBy)) {
+            currentPinnedBy = [...caseToToggle.pinnedBy];
+        } else if (caseToToggle.isPinned) {
+            currentPinnedBy = caseToToggle.professionalIds && caseToToggle.professionalIds.length > 0
+                ? [...caseToToggle.professionalIds]
+                : (currentUser.id ? [currentUser.id] : []);
+        } else {
+            currentPinnedBy = [];
+        }
+
+        let newPinnedBy: string[];
+        if (isPinning) {
+            newPinnedBy = Array.from(new Set([...currentPinnedBy, currentUser.id]));
+        } else {
+            newPinnedBy = currentPinnedBy.filter(id => id !== currentUser.id);
+        }
+
+        const firstUnpinnedIndex = activeCases.findIndex(c => !getIsCasePinnedForUser(c, currentUser.id, currentUser.role));
         
         let newOrderIndex: number;
-        const isPinning = !caseToToggle.isPinned;
-
         if (isPinning) {
             const lastPinnedCase = firstUnpinnedIndex > 0 ? activeCases[firstUnpinnedIndex - 1] : null;
             newOrderIndex = (lastPinnedCase?.orderIndex ?? 0) + 1000;
         } else {
-            const firstUnpinnedCase = activeCases.find(c => !c.isPinned && c.id !== caseToToggle.id);
+            const firstUnpinnedCase = activeCases.find(c => !getIsCasePinnedForUser(c, currentUser.id, currentUser.role) && c.id !== caseToToggle.id);
             newOrderIndex = (firstUnpinnedCase?.orderIndex ?? Date.now()) - 1000;
         }
 
-        const updatedCase = { ...caseToToggle, isPinned: isPinning, orderIndex: newOrderIndex };
+        const updatedCase: Case = { 
+            ...caseToToggle, 
+            pinnedBy: newPinnedBy,
+            isPinned: newPinnedBy.length > 0,
+            orderIndex: newOrderIndex 
+        };
         handleUpdateCase(updatedCase);
     };
 
     const handleDrop = (targetItem: Case) => {
-        if (!draggedItem || draggedItem.id === targetItem.id || draggedItem.isPinned !== targetItem.isPinned) {
+        if (!currentUser) return;
+        const isDraggedPinned = getIsCasePinnedForUser(draggedItem!, currentUser.id, currentUser.role);
+        const isTargetPinned = getIsCasePinnedForUser(targetItem, currentUser.id, currentUser.role);
+
+        if (!draggedItem || draggedItem.id === targetItem.id || isDraggedPinned !== isTargetPinned) {
             setDraggedItem(null);
             return;
         }
-    
-        const listToReorder = cases.filter(c => c.isPinned === draggedItem.isPinned && c.status !== CaseStatus.Closed).sort(caseSorter);
-        const otherCases = cases.filter(c => c.isPinned !== draggedItem.isPinned || c.status === CaseStatus.Closed);
+        
+        const currentSorter = getCaseSorter(currentUser.id, currentUser.role);
+        const listToReorder = cases.filter(c => 
+            getIsCasePinnedForUser(c, currentUser.id, currentUser.role) === isDraggedPinned && c.status !== CaseStatus.Closed
+        ).sort(currentSorter);
+        const otherCases = cases.filter(c => 
+            getIsCasePinnedForUser(c, currentUser.id, currentUser.role) !== isDraggedPinned || c.status === CaseStatus.Closed
+        );
     
         const draggedIndex = listToReorder.findIndex(c => c.id === draggedItem.id);
         const targetIndex = listToReorder.findIndex(c => c.id === targetItem.id);
@@ -1552,7 +1608,7 @@ const App: React.FC = () => {
                         />;
             case 'cases':
             default:
-                const activeCases = visibleCases.filter(c => c.status !== CaseStatus.Closed);
+                const activeCases = visibleCases.filter(c => c.status !== CaseStatus.Closed).sort(getCaseSorter(currentUser.id, currentUser.role));
                 const closedCases = cases.filter(c => c.status === CaseStatus.Closed);
                 const otherCases = cases.filter(c => c.status !== CaseStatus.Closed && (!c.professionalIds || !c.professionalIds.includes(currentUser.id)));
 
@@ -1581,8 +1637,8 @@ const App: React.FC = () => {
                     }
                 }
                 
-                const pinnedCases = displayedActiveCases.filter(c => c.isPinned);
-                const unpinnedCases = displayedActiveCases.filter(c => !c.isPinned);
+                const pinnedCases = displayedActiveCases.filter(c => getIsCasePinnedForUser(c, currentUser.id, currentUser.role));
+                const unpinnedCases = displayedActiveCases.filter(c => !getIsCasePinnedForUser(c, currentUser.id, currentUser.role));
 
                 const totalResults = pinnedCases.length + unpinnedCases.length + displayedClosedCases.length + displayedOtherCases.length;
 

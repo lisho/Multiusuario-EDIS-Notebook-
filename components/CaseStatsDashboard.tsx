@@ -4,6 +4,7 @@ import { Case, CaseStatus, Professional, Intervention, InterventionType, Interve
 import NewEventModal from './NewEventModal';
 import ExpiredActionsModal from './ExpiredActionsModal';
 import MissingProfessionalsModal from './MissingProfessionalsModal';
+import TechnicianAvatar from './TechnicianAvatar';
 import {
     IoTimeOutline,
     IoCheckboxOutline,
@@ -264,6 +265,31 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
             .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
     }, [cases, generalInterventions, currentUser]);
 
+    const getAssociatedProfessionals = (event: Intervention, caseForEvent: Case | null | undefined): Professional[] => {
+        const found = new Map<string, Professional>();
+
+        if (event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.length > 0) {
+            event.assignedTo.forEach(id => {
+                const prof = professionals.find(p => p.id === id);
+                if (prof) found.set(prof.id, prof);
+            });
+        }
+
+        if (found.size === 0 && event.createdBy) {
+            const prof = professionals.find(p => p.id === event.createdBy);
+            if (prof) found.set(prof.id, prof);
+        }
+
+        if (found.size === 0 && caseForEvent?.professionalIds && caseForEvent.professionalIds.length > 0) {
+            caseForEvent.professionalIds.forEach(id => {
+                const prof = professionals.find(p => p.id === id);
+                if (prof) found.set(prof.id, prof);
+            });
+        }
+
+        return Array.from(found.values());
+    };
+
     const expiredActions = useMemo(() => {
         const allInterventions = [
             ...cases.flatMap(c => c.interventions || []),
@@ -369,6 +395,7 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                         const Icon = interventionIcons[event.interventionType] || IoDocumentTextOutline;
                                         const styleClass = interventionTypeStyles[event.interventionType] || 'text-gray-500';
                                         const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
+                                        const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
                                         const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
                                         const currentStatusStyle = statusStyles[event.status];
                                         const isMenuOpen = openMenuId === event.id;
@@ -392,16 +419,37 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                                         {caseForEvent && (
                                                             <button 
                                                                 onClick={() => onSelectCaseById(caseForEvent.id)}
-                                                                className="text-sm text-teal-700 hover:underline font-medium truncate text-left"
+                                                                className="text-sm text-teal-700 hover:underline font-medium truncate text-left block"
                                                             >
                                                                 {caseForEvent.name}
                                                                 {caseForEvent.nickname && ` (${caseForEvent.nickname})`}
                                                             </button>
                                                         )}
                                                     </div>
-                                                    <button onClick={() => handleOpenEditModal(event)} className="text-slate-400 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors" title="Editar intervención">
-                                                        <IoPencilOutline className="text-lg" />
-                                                    </button>
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                        {associatedProfs.length > 0 && (
+                                                            <div className="flex -space-x-1.5 items-center">
+                                                                {associatedProfs.slice(0, 3).map(prof => (
+                                                                    <TechnicianAvatar
+                                                                        key={prof.id}
+                                                                        professional={prof}
+                                                                        size="sm"
+                                                                        prefix="Asignado/a:"
+                                                                        isCurrentUser={prof.id === currentUser?.id}
+                                                                        tooltipPosition="top"
+                                                                    />
+                                                                ))}
+                                                                {associatedProfs.length > 3 && (
+                                                                    <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold rounded-full bg-slate-200 text-slate-700 border border-white">
+                                                                        +{associatedProfs.length - 3}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        <button onClick={() => handleOpenEditModal(event)} className="text-slate-400 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors" title="Editar intervención">
+                                                            <IoPencilOutline className="text-lg" />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                                 <div className="flex items-center justify-between pl-20">
                                                     <label 

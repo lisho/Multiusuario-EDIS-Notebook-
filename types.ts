@@ -176,7 +176,8 @@ export interface Case {
     familyGrid: FamilyMember[];
     interventionRecords: InterventionRecord[];
     professionalIds?: string[];
-    isPinned?: boolean;
+    isPinned?: boolean; // Deprecated legacy boolean
+    pinnedBy?: string[]; // Professional IDs of technicians who pinned this case
     orderIndex?: number;
     createdBy?: string;
     genogramImage?: string; // URL to image in Cloudinary

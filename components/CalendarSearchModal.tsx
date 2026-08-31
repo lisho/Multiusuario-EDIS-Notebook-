@@ -1,12 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Intervention, Case } from '../types';
+import { Intervention, Case, Professional, User } from '../types';
 import { IoCloseOutline, IoSearchOutline } from 'react-icons/io5';
+import TechnicianAvatar from './TechnicianAvatar';
 
 interface CalendarSearchModalProps {
     isOpen: boolean;
     onClose: () => void;
     interventions: Intervention[];
     cases: Case[];
+    professionals?: Professional[];
+    currentUser?: User;
     onSelectIntervention: (intervention: Intervention) => void;
 }
 
@@ -15,6 +18,8 @@ const CalendarSearchModal: React.FC<CalendarSearchModalProps> = ({
     onClose,
     interventions,
     cases,
+    professionals = [],
+    currentUser,
     onSelectIntervention
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
@@ -28,6 +33,31 @@ const CalendarSearchModal: React.FC<CalendarSearchModalProps> = ({
             }, 100);
         }
     }, [isOpen]);
+
+    const getAssociatedProfessionals = (intervention: Intervention, caseInfo: Case | null | undefined): Professional[] => {
+        const found = new Map<string, Professional>();
+
+        if (intervention.assignedTo && Array.isArray(intervention.assignedTo) && intervention.assignedTo.length > 0) {
+            intervention.assignedTo.forEach(id => {
+                const prof = professionals.find(p => p.id === id);
+                if (prof) found.set(prof.id, prof);
+            });
+        }
+
+        if (found.size === 0 && intervention.createdBy) {
+            const prof = professionals.find(p => p.id === intervention.createdBy);
+            if (prof) found.set(prof.id, prof);
+        }
+
+        if (found.size === 0 && caseInfo?.professionalIds && caseInfo.professionalIds.length > 0) {
+            caseInfo.professionalIds.forEach(id => {
+                const prof = professionals.find(p => p.id === id);
+                if (prof) found.set(prof.id, prof);
+            });
+        }
+
+        return Array.from(found.values());
+    };
 
     const filteredInterventions = useMemo(() => {
         if (!searchTerm.trim()) return [];
@@ -89,6 +119,8 @@ const CalendarSearchModal: React.FC<CalendarSearchModalProps> = ({
                         <ul className="space-y-1">
                             {filteredInterventions.map(intervention => {
                                 const caseInfo = intervention.caseId ? cases.find(c => c.id === intervention.caseId) : null;
+                                const associatedProfs = getAssociatedProfessionals(intervention, caseInfo);
+
                                 return (
                                     <li key={intervention.id}>
                                         <button
@@ -98,21 +130,46 @@ const CalendarSearchModal: React.FC<CalendarSearchModalProps> = ({
                                             }}
                                             className="w-full text-left p-3 hover:bg-slate-50 rounded-lg transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2 border border-transparent hover:border-slate-100 group"
                                         >
-                                            <div className="flex flex-col">
-                                                <span className="font-semibold text-slate-800">
-                                                    {caseInfo ? `${caseInfo.name.split(' ')[0]} - ` : ''}{intervention.title}
-                                                </span>
-                                                <span className="text-sm text-slate-500 flex items-center gap-2">
-                                                    <span className="bg-slate-100 px-2 py-0.5 rounded text-xs">
+                                            <div className="flex flex-col flex-1 min-w-0 pr-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-slate-800 truncate">
+                                                        {caseInfo ? `${caseInfo.name.split(' ')[0]} - ` : ''}{intervention.title}
+                                                    </span>
+                                                </div>
+                                                <span className="text-sm text-slate-500 flex items-center gap-2 mt-0.5">
+                                                    <span className="bg-slate-100 px-2 py-0.5 rounded text-xs flex-shrink-0">
                                                         {intervention.interventionType}
                                                     </span>
-                                                    <span className="truncate max-w-[200px] sm:max-w-[300px]">
-                                                        {intervention.notes}
-                                                    </span>
+                                                    {intervention.notes && (
+                                                        <span className="truncate max-w-[200px] sm:max-w-[300px]">
+                                                            {intervention.notes}
+                                                        </span>
+                                                    )}
                                                 </span>
                                             </div>
-                                            <div className="text-sm text-slate-400 font-medium whitespace-nowrap group-hover:text-teal-600 transition-colors">
-                                                {formatDate(intervention.start)}
+                                            <div className="flex items-center gap-3 flex-shrink-0">
+                                                {associatedProfs.length > 0 && (
+                                                    <div className="flex -space-x-1 items-center">
+                                                        {associatedProfs.slice(0, 3).map(prof => (
+                                                            <TechnicianAvatar
+                                                                key={prof.id}
+                                                                professional={prof}
+                                                                size="xs"
+                                                                prefix="Asociado/a a:"
+                                                                isCurrentUser={prof.id === currentUser?.id}
+                                                                tooltipPosition="top"
+                                                            />
+                                                        ))}
+                                                        {associatedProfs.length > 3 && (
+                                                            <span className="inline-flex items-center justify-center w-4 h-4 text-[9px] font-bold rounded-full bg-slate-200 text-slate-700 border border-white">
+                                                                +{associatedProfs.length - 3}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                <div className="text-sm text-slate-400 font-medium whitespace-nowrap group-hover:text-teal-600 transition-colors">
+                                                    {formatDate(intervention.start)}
+                                                </div>
                                             </div>
                                         </button>
                                     </li>

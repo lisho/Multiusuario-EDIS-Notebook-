@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Case, Intervention, InterventionType, DashboardView, User, Professional } from '../types';
 import NewEventModal from './NewEventModal';
 import CalendarSearchModal from './CalendarSearchModal';
+import TechnicianAvatar from './TechnicianAvatar';
 import { IoAddOutline, IoChevronBackOutline, IoChevronForwardOutline, IoSearchOutline } from 'react-icons/io5';
 
 interface CalendarViewProps {
@@ -18,7 +19,7 @@ interface CalendarViewProps {
 type CalendarViewType = 'month' | 'week' | 'day';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-const HOUR_HEIGHT = 60; // in pixels
+const HOUR_HEIGHT = 96; // in pixels (increased from 60 to provide ample room for title, time, notes, and avatars)
 const START_HOUR = 8;
 const END_HOUR = 20;
 
@@ -148,7 +149,7 @@ const calculateEventPositions = (events: Intervention[]): PositionedEvent[] => {
             if (start.getHours() >= END_HOUR || end.getHours() < START_HOUR) return;
 
             const top = ((startMinutes - START_HOUR * 60) / 60) * HOUR_HEIGHT;
-            const durationMinutes = Math.max(15, endMinutes - startMinutes); // Min duration visual 15m
+            const durationMinutes = Math.max(30, endMinutes - startMinutes); // Minimum visual duration 30m for comfortable readability
             const height = (durationMinutes / 60) * HOUR_HEIGHT;
             
             const colIndex = (event as any)._colIndex;
@@ -232,35 +233,82 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         }).sort((a,b) => new Date(a.start).getTime() - new Date(b.start).getTime());
     };
 
+    const getAssociatedProfessionals = (event: Intervention, caseForEvent: Case | null | undefined): Professional[] => {
+        const found = new Map<string, Professional>();
+
+        if (event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.length > 0) {
+            event.assignedTo.forEach(id => {
+                const prof = professionals.find(p => p.id === id);
+                if (prof) found.set(prof.id, prof);
+            });
+        }
+
+        if (found.size === 0 && event.createdBy) {
+            const prof = professionals.find(p => p.id === event.createdBy);
+            if (prof) found.set(prof.id, prof);
+        }
+
+        if (found.size === 0 && caseForEvent?.professionalIds && caseForEvent.professionalIds.length > 0) {
+            caseForEvent.professionalIds.forEach(id => {
+                const prof = professionals.find(p => p.id === id);
+                if (prof) found.set(prof.id, prof);
+            });
+        }
+
+        return Array.from(found.values());
+    };
+
     const EventItem: React.FC<{event: Intervention}> = ({ event }) => {
         const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
         const style = getInterventionTypeColor(event.interventionType);
+        const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
 
         return (
             <div
                 style={{ ...style, borderLeft: `4px solid ${style.borderLeftColor}` }}
-                className="text-xs p-1.5 rounded-sm overflow-hidden mb-1 cursor-pointer"
+                className="text-xs p-1.5 rounded-sm overflow-hidden mb-1 cursor-pointer hover:brightness-95 transition-all shadow-2xs"
                 onClick={(e) => { e.stopPropagation(); handleOpenModal(event, undefined); }}
             >
-                <div className="font-semibold truncate">
-                    {caseForEvent ? (
-                        <>
-                            <button
-                                className="hover:underline"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onSelectCaseById(event.caseId!, 'notebook');
-                                }}
-                            >
-                                {caseForEvent.name.split(' ')[0]}
-                                {caseForEvent.nickname && (
-                                    <strong className="ml-1">({caseForEvent.nickname})</strong>
-                                )}
-                            </button>
-                            <span>&nbsp;- {event.title}</span>
-                        </>
-                    ) : (
-                        <span>{event.title}</span>
+                <div className="flex items-center justify-between gap-1">
+                    <div className="font-semibold truncate flex-1 min-w-0">
+                        {caseForEvent ? (
+                            <>
+                                <button
+                                    className="hover:underline"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onSelectCaseById(event.caseId!, 'notebook');
+                                    }}
+                                >
+                                    {caseForEvent.name.split(' ')[0]}
+                                    {caseForEvent.nickname && (
+                                        <strong className="ml-1">({caseForEvent.nickname})</strong>
+                                    )}
+                                </button>
+                                <span>&nbsp;- {event.title}</span>
+                            </>
+                        ) : (
+                            <span>{event.title}</span>
+                        )}
+                    </div>
+                    {associatedProfs.length > 0 && (
+                        <div className="flex -space-x-1 flex-shrink-0 items-center pl-1">
+                            {associatedProfs.slice(0, 3).map(prof => (
+                                <TechnicianAvatar
+                                    key={prof.id}
+                                    professional={prof}
+                                    size="xs"
+                                    prefix="Asociado/a a:"
+                                    isCurrentUser={prof.id === currentUser?.id}
+                                    tooltipPosition="top"
+                                />
+                            ))}
+                            {associatedProfs.length > 3 && (
+                                <span className="inline-flex items-center justify-center w-4 h-4 text-[9px] font-bold rounded-full bg-slate-200 text-slate-700 border border-white">
+                                    +{associatedProfs.length - 3}
+                                </span>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>
@@ -271,35 +319,79 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
         const style = getInterventionTypeColor(event.interventionType);
         const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
 
         return (
             <div
                 style={{ ...style, borderLeft: `4px solid ${style.borderLeftColor}` }}
-                className="text-xs p-1.5 rounded-sm overflow-hidden h-full flex flex-col cursor-pointer hover:brightness-95 transition-all shadow-sm"
+                className="text-xs p-2 rounded-md overflow-hidden h-full flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm group select-none hover:overflow-visible hover:shadow-xl hover:z-30 hover:h-auto hover:min-h-full hover:ring-2 hover:ring-teal-500/40"
                 onClick={(e) => { e.stopPropagation(); handleOpenModal(event, undefined); }}
             >
-                <div className="font-semibold truncate">
-                    {caseForEvent ? (
-                        <>
-                            <button
-                                className="hover:underline"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onSelectCaseById(event.caseId!, 'notebook');
-                                }}
-                            >
-                                {caseForEvent.name.split(' ')[0]}
-                                {caseForEvent.nickname && (
-                                    <strong className="ml-1">({caseForEvent.nickname})</strong>
+                <div className="space-y-1.5 min-w-0">
+                    {/* Header: Técnicos asignados en la parte superior derecha + Badge de Tipo de Cita */}
+                    <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-black/5">
+                        <span className="text-[10px] uppercase font-bold tracking-wider opacity-85 px-1.5 py-0.5 rounded bg-black/5 truncate">
+                            {event.interventionType}
+                        </span>
+
+                        {associatedProfs.length > 0 && (
+                            <div className="flex -space-x-1.5 flex-shrink-0 items-center pl-1">
+                                {associatedProfs.slice(0, 4).map(prof => (
+                                    <TechnicianAvatar
+                                        key={prof.id}
+                                        professional={prof}
+                                        size="xs"
+                                        prefix="Asignado/a:"
+                                        isCurrentUser={prof.id === currentUser?.id}
+                                        tooltipPosition="top"
+                                    />
+                                ))}
+                                {associatedProfs.length > 4 && (
+                                    <span className="inline-flex items-center justify-center w-4 h-4 text-[9px] font-bold rounded-full bg-slate-200 text-slate-700 border border-white">
+                                        +{associatedProfs.length - 4}
+                                    </span>
                                 )}
-                            </button>
-                            <span>&nbsp;- {event.title}</span>
-                        </>
-                    ) : (
-                        <span>{event.title}</span>
-                    )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Usuario / Caso & Título */}
+                    <div className="leading-snug">
+                        {caseForEvent && (
+                            <div className="text-[12px] font-bold text-slate-900 flex items-center gap-1">
+                                <button
+                                    className="hover:underline text-teal-800 font-bold truncate text-left"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onSelectCaseById(event.caseId!, 'notebook');
+                                    }}
+                                    title={`Ir al caso de ${caseForEvent.name}`}
+                                >
+                                    {caseForEvent.name}
+                                    {caseForEvent.nickname && (
+                                        <span className="ml-1 text-slate-600 font-medium">({caseForEvent.nickname})</span>
+                                    )}
+                                </button>
+                            </div>
+                        )}
+                        <div className="font-semibold text-[13px] text-slate-800 mt-0.5 group-hover:whitespace-normal line-clamp-2 group-hover:line-clamp-none break-words">
+                            {event.title}
+                        </div>
+                    </div>
+
+                    {/* Hora */}
+                    <div className="pt-0.5">
+                        {!event.isAllDay ? (
+                            <span className="inline-block bg-white/90 px-1.5 py-0.5 rounded border border-black/5 font-semibold text-slate-700 text-[11px]">
+                                {timeFormat.format(new Date(event.start))} - {timeFormat.format(new Date(event.end))}
+                            </span>
+                        ) : (
+                            <span className="inline-block bg-white/90 px-1.5 py-0.5 rounded border border-black/5 font-semibold text-slate-600 text-[10px]">
+                                Todo el día
+                            </span>
+                        )}
+                    </div>
                 </div>
-                {!event.isAllDay && <div className="text-slate-700">{timeFormat.format(new Date(event.start))}</div>}
             </div>
         );
     };
@@ -447,18 +539,18 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 {/* Background Grid */}
                 <div className="grid-lines grid grid-cols-7">
                     {Array.from({ length: (END_HOUR - START_HOUR) * 7 }).map((_, i) => (
-                        <div key={`grid-cell-${i}`} className="h-[60px] border-b border-l border-slate-200"></div>
+                        <div key={`grid-cell-${i}`} style={{ height: `${HOUR_HEIGHT}px` }} className="border-b border-l border-slate-200"></div>
                     ))}
                 </div>
     
                 {/* Events */}
-                <div className="absolute top-0 left-0 right-0 bottom-0 grid grid-cols-7">
+                <div className="absolute top-0 left-0 right-0 bottom-0 grid grid-cols-7 pointer-events-none">
                     {timedEventsPositionsByDay.map((positionedEvents, dayIndex) => (
                         <div key={dayIndex} className="relative border-l border-slate-200">
                             {positionedEvents.map(({event, style}) => (
                                 <div 
                                     key={event.id} 
-                                    className="absolute z-10" 
+                                    className="absolute z-10 pointer-events-auto hover:z-40" 
                                     style={{ 
                                         top: `${style.top}px`, 
                                         height: `${style.height}px`,
@@ -547,16 +639,16 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 {/* Background grid lines */}
                 <div className="grid-lines">
                     {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => (
-                        <div key={`grid-line-${i}`} className="h-[60px] border-b border-slate-200"></div>
+                        <div key={`grid-line-${i}`} style={{ height: `${HOUR_HEIGHT}px` }} className="border-b border-slate-200"></div>
                     ))}
                 </div>
                 
                 {/* Timed Events */}
-                <div className="absolute top-0 left-0 right-0 bottom-0">
+                <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
                     {positionedEvents.map(({event, style}) => (
                         <div 
                             key={event.id} 
-                            className="absolute z-10" 
+                            className="absolute z-10 pointer-events-auto hover:z-40" 
                             style={{ 
                                 top: `${style.top}px`, 
                                 height: `${style.height}px`,
@@ -616,6 +708,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 onClose={() => setIsSearchModalOpen(false)}
                 interventions={allInterventions}
                 cases={cases}
+                professionals={professionals}
+                currentUser={currentUser}
                 onSelectIntervention={(intervention) => handleOpenModal(intervention, undefined)}
             />
         </div>

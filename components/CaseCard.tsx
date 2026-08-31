@@ -52,6 +52,12 @@ const CaseCard: React.FC<CaseCardProps> = ({
         return isAssigned || isCreator || isLegacy;
     };
 
+    const isPinnedForMe = currentUser
+        ? (caseData.pinnedBy && Array.isArray(caseData.pinnedBy)
+            ? caseData.pinnedBy.includes(currentUser.id)
+            : !!caseData.isPinned)
+        : !!caseData.isPinned;
+
     const pendingTasks = (caseData.tasks || []).filter(isVisibleToUser).filter(t => !t.completed).length;
     const notebookEntries = (caseData.interventions || []).filter(i => i.isRegistered).length;
     const notesCount = Array.isArray(caseData.myNotes) 
@@ -108,10 +114,10 @@ const CaseCard: React.FC<CaseCardProps> = ({
                         <button 
                             onClick={handleTogglePin} 
                             className="group -mr-2 -mt-2 rounded-full transition-colors hover:bg-teal-50 flex items-center justify-center w-8 h-8"
-                            aria-label={caseData.isPinned ? "Desfijar caso" : "Fijar caso"}
-                            title={caseData.isPinned ? "Desfijar caso" : "Fijar caso"}
+                            aria-label={isPinnedForMe ? "Desfijar caso" : "Fijar caso"}
+                            title={isPinnedForMe ? "Desfijar caso" : "Fijar caso"}
                         >
-                            {caseData.isPinned 
+                            {isPinnedForMe 
                                 ? <BsPinAngleFill className="text-teal-600 text-lg"/> 
                                 : <BsPinAngle className="text-slate-400 group-hover:text-teal-600 text-lg"/>
                             }
