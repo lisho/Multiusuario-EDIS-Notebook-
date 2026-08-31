@@ -40,6 +40,7 @@ interface CaseStatsDashboardProps {
   onSelectCaseById: (caseId: string, view?: DashboardView) => void;
   onSetStatusFilter: (status: CaseStatus) => void;
   onOpenAllTasks: () => void;
+  onOpenNotesPanel: () => void;
   onSaveIntervention: (intervention: Omit<Intervention, 'id'> | Intervention) => void;
   onDeleteIntervention: (intervention: Intervention) => void;
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
@@ -101,17 +102,49 @@ const StatCard: React.FC<{
     title: string;
     value: string | number;
     className?: string;
-}> = ({ icon: Icon, title, value, className }) => (
-    <div className={`bg-amber-50 p-5 rounded-lg shadow-sm border border-amber-200 flex flex-col items-center justify-center gap-2 text-center ${className}`}>
-        <div className="bg-amber-100 text-amber-700 rounded-full p-3">
-            <Icon className="w-8 h-8" />
+    variant?: 'amber' | 'teal' | 'red' | 'purple' | 'emerald';
+}> = ({ icon: Icon, title, value, className = '', variant = 'amber' }) => {
+    const variantStyles = {
+        amber: {
+            card: 'bg-amber-50 border-amber-200 hover:bg-amber-100',
+            iconBg: 'bg-amber-100 text-amber-700',
+            value: 'text-orange-600'
+        },
+        teal: {
+            card: 'bg-teal-50 border-teal-200 hover:bg-teal-100',
+            iconBg: 'bg-teal-100 text-teal-700',
+            value: 'text-teal-700'
+        },
+        red: {
+            card: 'bg-red-50 border-red-200 hover:bg-red-100',
+            iconBg: 'bg-red-100 text-red-700',
+            value: 'text-red-600'
+        },
+        purple: {
+            card: 'bg-purple-50 border-purple-200 hover:bg-purple-100',
+            iconBg: 'bg-purple-100 text-purple-700',
+            value: 'text-purple-600'
+        },
+        emerald: {
+            card: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100',
+            iconBg: 'bg-emerald-100 text-emerald-700',
+            value: 'text-emerald-700'
+        }
+    };
+    const style = variantStyles[variant] || variantStyles.amber;
+
+    return (
+        <div className={`${style.card} p-5 rounded-lg shadow-sm border flex flex-col items-center justify-center gap-2 text-center transition-colors ${className}`}>
+            <div className={`${style.iconBg} rounded-full p-3`}>
+                <Icon className="w-8 h-8" />
+            </div>
+            <div>
+                <p className={`text-2xl font-bold ${style.value}`}>{value}</p>
+                <p className="text-sm font-medium text-slate-500">{title}</p>
+            </div>
         </div>
-        <div>
-            <p className="text-2xl font-bold text-orange-600">{value}</p>
-            <p className="text-sm font-medium text-slate-500">{title}</p>
-        </div>
-    </div>
-);
+    );
+};
 
 const AnimatedItem: React.FC<{ children: React.ReactNode; delay?: number }> = ({ children, delay = 0 }) => {
     const [isVisible, setIsVisible] = useState(false);
@@ -142,7 +175,7 @@ const AnimatedLi: React.FC<{ children: React.ReactNode; delay?: number; classNam
 };
 
 const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
-    const { cases, professionals, generalInterventions, generalTasks, onSelectCaseById, onOpenAllTasks, onSaveIntervention, onDeleteIntervention, requestConfirmation, currentUser, onOpenAllNotes } = props;
+    const { cases, professionals, generalInterventions, generalTasks, onSelectCaseById, onOpenAllTasks, onOpenNotesPanel, onSaveIntervention, onDeleteIntervention, requestConfirmation, currentUser, onOpenAllNotes } = props;
 
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
     const [isExpiredActionsModalOpen, setIsExpiredActionsModalOpen] = useState(false);
@@ -172,6 +205,17 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         const pendingCaseTasks = activeCases.reduce((acc, c) => acc + c.tasks.filter(t => !t.completed).length, 0);
         const pendingGeneralTasks = generalTasks.filter(t => !t.completed).length;
         const pendingTasksCount = pendingCaseTasks + pendingGeneralTasks;
+
+        const pendingNotesCount = activeCases.reduce((acc, c) => {
+            if (!c.myNotes) return acc;
+            if (Array.isArray(c.myNotes)) {
+                const userNotes = currentUser
+                    ? c.myNotes.filter(n => !n.createdBy || n.createdBy === currentUser.id)
+                    : c.myNotes;
+                return acc + userNotes.length;
+            }
+            return acc + (c.myNotes ? 1 : 0);
+        }, 0);
         
         // Find cases with notebook entries (interventions registered in the notebook)
         const casesWithNotebookEntries: { caseItem: Case; latestNotebookDate: string }[] = [];
@@ -198,8 +242,8 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
 
         const recentlyUpdated = casesWithNotebookEntries.slice(0, 5);
 
-        return { pendingTasksCount, recentlyUpdated };
-    }, [cases, generalTasks]);
+        return { pendingTasksCount, pendingNotesCount, recentlyUpdated };
+    }, [cases, generalTasks, currentUser]);
     
     const todaysAgenda = useMemo(() => {
         const allInterventions = [
@@ -419,24 +463,53 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                 
                 <div className="space-y-6">
                     <AnimatedItem delay={100}>
-                        <div className="grid grid-cols-2 gap-4">
-                             <button onClick={onOpenAllTasks} className="w-full" title="Ver todas las tareas pendientes">
-                                <StatCard 
-                                    icon={IoCheckboxOutline} 
-                                    title="Tareas" 
-                                    value={stats.pendingTasksCount} 
-                                    className="hover:bg-amber-100 transition-colors cursor-pointer h-full"
-                                />
-                            </button>
-                            <button onClick={onOpenAllNotes} className="w-full" title="Ver todas mis notas y tareas agrupadas">
-                                <div className="bg-teal-50 p-5 rounded-lg shadow-sm border border-teal-200 flex flex-col items-center justify-center gap-2 text-center hover:bg-teal-100 transition-colors cursor-pointer h-full">
-                                    <div className="bg-teal-100 text-teal-700 rounded-full p-3">
-                                        <IoJournalOutline className="w-8 h-8" />
+                        <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-4">
+                                <button 
+                                    onClick={onOpenAllTasks} 
+                                    className="w-full h-full text-left" 
+                                    title="Desplegar todas las tareas pendientes en el panel lateral"
+                                >
+                                    <StatCard 
+                                        icon={IoCheckboxOutline} 
+                                        title="Tareas pendientes" 
+                                        value={stats.pendingTasksCount} 
+                                        variant="amber"
+                                        className="cursor-pointer h-full"
+                                    />
+                                </button>
+                                <button 
+                                    onClick={onOpenNotesPanel} 
+                                    className="w-full h-full text-left" 
+                                    title="Desplegar notas de colores ordenadas por casos"
+                                >
+                                    <StatCard 
+                                        icon={IoJournalOutline} 
+                                        title="Notas" 
+                                        value={stats.pendingNotesCount} 
+                                        variant="teal"
+                                        className="cursor-pointer h-full"
+                                    />
+                                </button>
+                            </div>
+
+                            <button 
+                                onClick={onOpenAllNotes} 
+                                className="w-full bg-slate-50 hover:bg-teal-50/80 p-3.5 rounded-lg shadow-sm border border-slate-200 hover:border-teal-300 flex items-center justify-between gap-3 text-slate-700 hover:text-teal-900 transition-all cursor-pointer group"
+                                title="Abrir la vista de gestión de todas las tareas y notas"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-teal-100 text-teal-700 rounded-lg p-2 group-hover:bg-teal-600 group-hover:text-white transition-colors">
+                                        <IoJournalOutline className="w-5 h-5" />
                                     </div>
-                                    <div>
-                                        <p className="text-lg font-bold text-teal-700">Notas y Tareas</p>
+                                    <div className="text-left">
+                                        <span className="text-sm font-bold text-slate-800 group-hover:text-teal-800">Notas y tareas</span>
+                                        <p className="text-xs text-slate-500">Gestión global de notas y tareas</p>
                                     </div>
                                 </div>
+                                <span className="text-xs font-semibold text-teal-700 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                                    Abrir gestor &rarr;
+                                </span>
                             </button>
                         </div>
                     </AnimatedItem>

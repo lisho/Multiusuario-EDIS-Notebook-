@@ -338,7 +338,13 @@ const CaseDashboard: React.FC<CaseDashboardProps> = (props) => {
                             onBulkSaveInterventions={props.onBulkSaveInterventions}
                         />;
             case 'myNotes':
-                return <MyNotesView caseData={caseData} onUpdateCase={onUpdateCase} requestConfirmation={requestConfirmation} currentUser={currentUser} />;
+                return <MyNotesView 
+                            caseData={caseData} 
+                            onUpdateCase={onUpdateCase} 
+                            requestConfirmation={requestConfirmation} 
+                            currentUser={currentUser} 
+                            professionals={props.professionals}
+                        />;
             case 'reports':
                  return (
                     <div className="p-8 bg-white rounded-lg shadow">

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Task, Professional, Case, User } from '../types';
-import { IoAddOutline, IoTrashOutline, IoArrowRedoOutline, IoPencilOutline } from 'react-icons/io5';
+import React, { useState, useMemo } from 'react';
+import { Task, Professional, Case, User, ProfessionalRole } from '../types';
+import { IoAddOutline, IoTrashOutline, IoArrowRedoOutline, IoPencilOutline, IoPersonOutline, IoCheckmarkCircle } from 'react-icons/io5';
 
 interface TasksViewProps {
     tasks: Task[];
@@ -29,7 +29,7 @@ const TaskItem: React.FC<{
 
     const assignedProfs = (task.assignedTo || [])
         .map(id => professionals.find(p => p.id === id))
-        .filter(p => p && p.systemRole !== 'admin') as Professional[];
+        .filter(p => p && p.role === ProfessionalRole.EdisTechnician) as Professional[];
 
     const handleSaveEdit = () => {
         if (editText.trim() && editText.trim() !== task.text) {
@@ -56,7 +56,7 @@ const TaskItem: React.FC<{
                         if (e.key === 'Escape') setIsEditing(false);
                     }}
                     onBlur={handleSaveEdit}
-                    className="flex-grow text-slate-800 bg-slate-100 border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    className="flex-grow text-slate-800 bg-slate-100 border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-teal-500 text-sm"
                     autoFocus
                 />
             </div>
@@ -64,39 +64,45 @@ const TaskItem: React.FC<{
     }
 
     return (
-        <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-slate-200 group">
+        <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-slate-200 group hover:border-slate-300 transition-colors">
             <input
                 type="checkbox"
                 checked={task.completed}
                 onChange={onToggle}
                 className="mt-1 h-5 w-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
             />
-            <div className="flex-grow">
-                <p className={`text-slate-800 ${task.completed ? 'line-through text-slate-500' : ''}`}>
+            <div className="flex-grow min-w-0">
+                <p className={`text-sm text-slate-800 ${task.completed ? 'line-through text-slate-400' : ''}`}>
                     {task.text}
                 </p>
-                <div className="flex items-center gap-2 mt-1 -space-x-1">
-                    {assignedProfs.map(p => (
-                         <div key={p.id} className="w-5 h-5 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-[10px] border border-white overflow-hidden transition-transform duration-200 hover:scale-150 hover:z-10" title={p.name}>
-                            {p.avatar ? (
-                                <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
-                            ) : (
-                                <span>{getInitials(p.name)}</span>
-                            )}
-                        </div>
-                    ))}
-                </div>
+                {assignedProfs.length > 0 && (
+                    <div className="flex items-center gap-1 mt-1.5 -space-x-1">
+                        {assignedProfs.map(p => (
+                            <div 
+                                key={p.id} 
+                                className="w-5 h-5 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-[9px] border border-white overflow-hidden shadow-2xs" 
+                                title={`Asignado a: ${p.name}`}
+                            >
+                                {p.avatar ? (
+                                    <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
+                                ) : (
+                                    <span>{getInitials(p.name)}</span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                 <button onClick={() => setIsEditing(true)} className="p-1.5 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-100" title="Editar Tarea">
+                 <button onClick={() => setIsEditing(true)} className="p-1.5 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-100 transition-colors" title="Editar Tarea">
                     <IoPencilOutline />
                 </button>
                 {!task.completed && (
-                    <button onClick={onConvertToEntry} className="p-1.5 text-slate-400 hover:text-teal-600 rounded-full hover:bg-slate-100" title="Convertir en Entrada de Cuaderno">
+                    <button onClick={onConvertToEntry} className="p-1.5 text-slate-400 hover:text-teal-600 rounded-full hover:bg-slate-100 transition-colors" title="Convertir en Entrada de Cuaderno">
                         <IoArrowRedoOutline />
                     </button>
                 )}
-                <button onClick={onDelete} className="p-1.5 text-slate-400 hover:text-red-600 rounded-full hover:bg-red-100" title="Eliminar Tarea">
+                <button onClick={onDelete} className="p-1.5 text-slate-400 hover:text-red-600 rounded-full hover:bg-red-100 transition-colors" title="Eliminar Tarea">
                     <IoTrashOutline />
                 </button>
             </div>
@@ -108,7 +114,16 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
     const { tasks, onAddTask, onToggleTask, onDeleteTask, onTaskToEntry, professionals, caseData, onUpdateTask, currentUser } = props;
     const [newTaskText, setNewTaskText] = useState('');
     
-    const teamProfessionals = professionals.filter(p => caseData.professionalIds?.includes(p.id) && p.systemRole !== 'admin');
+    // Only EDIS Technicians can be assigned tasks
+    const edisTechnicians = useMemo(() => {
+        return professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+    }, [professionals]);
+
+    const teamProfessionals = useMemo(() => {
+        const caseEdis = edisTechnicians.filter(p => caseData.professionalIds?.includes(p.id));
+        return caseEdis.length > 0 ? caseEdis : edisTechnicians;
+    }, [edisTechnicians, caseData.professionalIds]);
+
     const [assignedTo, setAssignedTo] = useState<string[]>(currentUser?.id ? [currentUser.id] : []);
 
     const handleAddTask = (e: React.FormEvent) => {
@@ -127,6 +142,19 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
         );
     };
 
+    const handleSelectOnlyMe = () => {
+        if (currentUser?.id) {
+            setAssignedTo([currentUser.id]);
+        }
+    };
+
+    const handleSelectAllTeam = () => {
+        setAssignedTo(teamProfessionals.map(p => p.id));
+    };
+
+    const isOnlyMeSelected = currentUser?.id && assignedTo.length === 1 && assignedTo[0] === currentUser.id;
+    const isAllTeamSelected = teamProfessionals.length > 0 && assignedTo.length === teamProfessionals.length;
+
     const pendingTasks = tasks.filter(t => !t.completed);
     const completedTasks = tasks.filter(t => t.completed);
 
@@ -134,7 +162,7 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
         <div className="space-y-6">
             <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
                 <form onSubmit={handleAddTask} className="space-y-3">
-                     <div className="flex gap-2">
+                    <div className="flex gap-2">
                         <input
                             type="text"
                             value={newTaskText}
@@ -146,20 +174,72 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
                             <IoAddOutline className="text-2xl" />
                         </button>
                     </div>
-                     <div>
-                        <label className="block text-slate-700 font-semibold mb-2 text-sm">Asignar A:</label>
+
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                                <IoPersonOutline className="text-teal-600 text-sm" />
+                                Asignar a Técnico/a EDIS:
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                                {currentUser && (
+                                    <button
+                                        type="button"
+                                        onClick={handleSelectOnlyMe}
+                                        className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${
+                                            isOnlyMeSelected
+                                                ? 'bg-teal-100 text-teal-800 border-teal-300 font-semibold'
+                                                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                                        }`}
+                                    >
+                                        Solo a mí
+                                    </button>
+                                )}
+                                {teamProfessionals.length > 1 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleSelectAllTeam}
+                                        className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${
+                                            isAllTeamSelected
+                                                ? 'bg-indigo-100 text-indigo-800 border-indigo-300 font-semibold'
+                                                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                                        }`}
+                                    >
+                                        Todo el equipo
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
                         <div className="flex flex-wrap gap-2">
-                            {teamProfessionals.map(p => (
-                                <label key={p.id} className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-slate-100 border border-transparent has-[:checked]:bg-teal-50 has-[:checked]:border-teal-200">
-                                    <input
-                                        type="checkbox"
-                                        checked={assignedTo.includes(p.id)}
-                                        onChange={() => handleAssigneeToggle(p.id)}
-                                        className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                                    />
-                                    <span className="text-sm text-slate-800">{p.name}</span>
-                                </label>
-                            ))}
+                            {teamProfessionals.map(p => {
+                                const isSelected = assignedTo.includes(p.id);
+                                const isMe = currentUser && p.id === currentUser.id;
+                                return (
+                                    <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => handleAssigneeToggle(p.id)}
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs transition-all border ${
+                                            isSelected
+                                                ? 'bg-teal-50 border-teal-500 text-teal-900 font-medium shadow-2xs ring-1 ring-teal-400'
+                                                : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <div className="w-5 h-5 rounded-full bg-teal-200 text-teal-900 flex items-center justify-center font-bold text-[9px] overflow-hidden flex-shrink-0">
+                                            {p.avatar ? (
+                                                <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
+                                            ) : (
+                                                getInitials(p.name)
+                                            )}
+                                        </div>
+                                        <span>{p.name} {isMe ? '(Tú)' : ''}</span>
+                                        {isSelected && (
+                                            <IoCheckmarkCircle className="text-teal-600 text-sm flex-shrink-0" />
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 </form>
@@ -170,7 +250,15 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
                     <h3 className="text-lg font-bold text-slate-800 mb-3">Tareas Pendientes ({pendingTasks.length})</h3>
                     <div className="space-y-2">
                         {pendingTasks.map(task => (
-                            <TaskItem key={task.id} task={task} onToggle={() => onToggleTask(task.id)} onDelete={() => onDeleteTask(task.id)} onConvertToEntry={() => onTaskToEntry(task)} professionals={professionals} onUpdateTask={onUpdateTask}/>
+                            <TaskItem 
+                                key={task.id} 
+                                task={task} 
+                                onToggle={() => onToggleTask(task.id)} 
+                                onDelete={() => onDeleteTask(task.id)} 
+                                onConvertToEntry={() => onTaskToEntry(task)} 
+                                professionals={edisTechnicians} 
+                                onUpdateTask={onUpdateTask}
+                            />
                         ))}
                     </div>
                 </div>
@@ -180,7 +268,15 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
                         <h3 className="text-lg font-bold text-slate-800 mb-3">Tareas Completadas ({completedTasks.length})</h3>
                         <div className="space-y-2">
                             {completedTasks.map(task => (
-                                <TaskItem key={task.id} task={task} onToggle={() => onToggleTask(task.id)} onDelete={() => onDeleteTask(task.id)} onConvertToEntry={() => onTaskToEntry(task)} professionals={professionals} onUpdateTask={onUpdateTask}/>
+                                <TaskItem 
+                                    key={task.id} 
+                                    task={task} 
+                                    onToggle={() => onToggleTask(task.id)} 
+                                    onDelete={() => onDeleteTask(task.id)} 
+                                    onConvertToEntry={() => onTaskToEntry(task)} 
+                                    professionals={edisTechnicians} 
+                                    onUpdateTask={onUpdateTask}
+                                />
                             ))}
                         </div>
                     </div>

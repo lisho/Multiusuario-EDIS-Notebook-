@@ -1,5 +1,6 @@
 {
   "name": "AI Field Notebook Multiusuario",
   "description": "A digital field notebook for social support professionals to track interventions, enhanced with AI-powered summaries and insights to better support individuals in complex inclusion programs.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

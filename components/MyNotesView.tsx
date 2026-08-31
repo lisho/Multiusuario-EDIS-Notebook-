@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Case, MyNote, User } from '../types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Case, MyNote, Professional, User } from '../types';
 import NoteEditorModal from './NoteEditorModal';
-import { IoJournalOutline, IoAddOutline, IoPencilOutline, IoTrashOutline } from 'react-icons/io5';
+import { IoJournalOutline, IoAddOutline, IoPencilOutline, IoTrashOutline, IoPersonOutline, IoSendOutline } from 'react-icons/io5';
 
 interface MyNotesViewProps {
   caseData: Case;
   onUpdateCase: (updatedCase: Case) => void;
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
   currentUser: User;
+  professionals?: Professional[];
 }
 
 const colorClasses = {
@@ -17,23 +18,87 @@ const colorClasses = {
     green: 'bg-green-100 border-green-200 rotate-[2deg] hover:rotate-[3deg] hover:scale-105',
 };
 
-const PostItCard: React.FC<{ note: MyNote; onEdit: () => void; onDelete: () => void; }> = ({ note, onEdit, onDelete }) => {
+const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+const PostItCard: React.FC<{ 
+    note: MyNote; 
+    onEdit: () => void; 
+    onDelete: () => void; 
+    currentUser: User;
+    professionals?: Professional[];
+}> = ({ note, onEdit, onDelete, currentUser, professionals = [] }) => {
     const baseColorClass = colorClasses[note.color] || colorClasses.yellow;
     
+    // Find creator professional
+    const creatorProf = note.createdBy ? professionals.find(p => p.id === note.createdBy) : null;
+    const isFromOther = note.createdBy && note.createdBy !== currentUser.id;
+    
+    // Find assigned professionals
+    const assignedProfs = (note.assignedTo || [])
+        .map(id => professionals.find(p => p.id === id))
+        .filter(Boolean) as Professional[];
+    
+    const isSentToOthers = note.createdBy === currentUser.id && 
+        note.assignedTo && 
+        note.assignedTo.length > 0 && 
+        note.assignedTo.some(id => id !== currentUser.id);
+
     return (
-        <div className={`p-4 border rounded-md shadow-md transform transition-transform duration-200 ease-in-out group ${baseColorClass}`}>
-            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={onEdit} className="p-1.5 bg-white/50 rounded-full hover:bg-white/80" title="Editar nota"><IoPencilOutline className="text-slate-600"/></button>
-                <button onClick={onDelete} className="p-1.5 bg-white/50 rounded-full hover:bg-white/80" title="Eliminar nota"><IoTrashOutline className="text-red-600"/></button>
+        <div className={`p-4 border rounded-md shadow-md transform transition-transform duration-200 ease-in-out group relative flex flex-col justify-between ${baseColorClass}`}>
+            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <button onClick={onEdit} className="p-1.5 bg-white/70 rounded-full hover:bg-white text-slate-600 shadow-xs" title="Editar nota">
+                    <IoPencilOutline className="text-sm"/>
+                </button>
+                <button onClick={onDelete} className="p-1.5 bg-white/70 rounded-full hover:bg-white text-red-600 shadow-xs" title="Eliminar nota">
+                    <IoTrashOutline className="text-sm"/>
+                </button>
             </div>
-            <p className="text-slate-800 whitespace-pre-wrap min-h-[100px]">{note.content}</p>
-            <p className="text-xs text-slate-500 mt-2 text-right">{new Date(note.createdAt).toLocaleDateString('es-ES')}</p>
+
+            {/* Creator / Recipient badges */}
+            <div className="mb-2 pr-12">
+                {isFromOther && (
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/80 text-teal-800 text-xs font-semibold shadow-xs">
+                        <div className="w-4 h-4 rounded-full bg-teal-200 text-teal-900 flex items-center justify-center text-[9px] font-bold overflow-hidden">
+                            {creatorProf?.avatar ? (
+                                <img src={creatorProf.avatar} alt={creatorProf.name} className="w-full h-full object-cover" />
+                            ) : (
+                                <span>{getInitials(creatorProf?.name || 'T')}</span>
+                            )}
+                        </div>
+                        <span>De: {creatorProf?.name || 'Compañero/a'}</span>
+                    </div>
+                )}
+
+                {isSentToOthers && (
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/80 text-indigo-800 text-xs font-semibold shadow-xs">
+                        <IoSendOutline className="text-xs" />
+                        <span>Para: {assignedProfs.map(p => p.name).join(', ')}</span>
+                    </div>
+                )}
+            </div>
+
+            <p className="text-slate-800 whitespace-pre-wrap min-h-[90px] text-sm leading-relaxed">{note.content}</p>
+            
+            <div className="flex justify-between items-center mt-3 pt-2 border-t border-black/5 text-xs text-slate-500">
+                <div className="flex -space-x-1">
+                    {assignedProfs.map(p => (
+                        <div key={p.id} className="w-5 h-5 rounded-full bg-white/90 text-slate-700 flex items-center justify-center font-bold text-[9px] border border-slate-200 overflow-hidden" title={`Asignada a ${p.name}`}>
+                            {p.avatar ? (
+                                <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
+                            ) : (
+                                <span>{getInitials(p.name)}</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+                <span>{new Date(note.createdAt).toLocaleDateString('es-ES')}</span>
+            </div>
         </div>
     );
 };
 
 
-const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, requestConfirmation, currentUser }) => {
+const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, requestConfirmation, currentUser, professionals = [] }) => {
     const [notes, setNotes] = useState<MyNote[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingNote, setEditingNote] = useState<MyNote | null>(null);
@@ -49,10 +114,23 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
                 id: `note-${Date.now()}`,
                 content: caseData.myNotes as string,
                 color: 'yellow',
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                createdBy: currentUser.id,
+                assignedTo: [currentUser.id]
             }] : [];
         
-        const userNotes = allNotes.filter(note => note.createdBy === currentUser.id);
+        // Filter notes visible to this user:
+        // 1. Admin sees all notes
+        // 2. Assigned to current user
+        // 3. Created by current user (even if assigned to someone else, creator can see it)
+        // 4. Fallback: unassigned notes created by current user
+        const userNotes = allNotes.filter(note => {
+            if (currentUser.role === 'admin') return true;
+            const isAssigned = note.assignedTo?.includes(currentUser.id);
+            const isCreator = note.createdBy === currentUser.id;
+            const isLegacy = (!note.assignedTo || note.assignedTo.length === 0) && isCreator;
+            return isAssigned || isCreator || isLegacy;
+        });
         
         setNotes(userNotes);
     }, [caseData.myNotes, caseData.id, currentUser]);
@@ -67,15 +145,23 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
         setEditingNote(null);
     };
 
-    const handleSaveNote = async (noteData: Pick<MyNote, 'content' | 'color'> & { id?: string }) => {
+    const handleSaveNote = async (noteData: Pick<MyNote, 'content' | 'color' | 'assignedTo'> & { id?: string }) => {
         const allNotesFromCase = Array.isArray(caseData.myNotes) ? [...caseData.myNotes] : [];
-        const otherUserNotes = allNotesFromCase.filter(n => n.createdBy !== currentUser.id);
-        const currentUserNotes = allNotesFromCase.filter(n => n.createdBy === currentUser.id);
+        const finalAssignedTo = noteData.assignedTo && noteData.assignedTo.length > 0 ? noteData.assignedTo : [currentUser.id];
 
-        let updatedCurrentUserNotes: MyNote[];
+        let updatedAllNotes: MyNote[];
 
         if (noteData.id) { // Editing existing note
-            updatedCurrentUserNotes = currentUserNotes.map(n => n.id === noteData.id ? { ...n, content: noteData.content, color: noteData.color } : n);
+            updatedAllNotes = allNotesFromCase.map(n => 
+                n.id === noteData.id 
+                    ? { 
+                        ...n, 
+                        content: noteData.content, 
+                        color: noteData.color,
+                        assignedTo: finalAssignedTo
+                      } 
+                    : n
+            );
         } else { // Adding new note
             const newNote: MyNote = {
                 id: `note-${Date.now()}`,
@@ -83,12 +169,12 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
                 color: noteData.color,
                 createdAt: new Date().toISOString(),
                 createdBy: currentUser.id,
+                assignedTo: finalAssignedTo
             };
-            updatedCurrentUserNotes = [newNote, ...currentUserNotes];
+            updatedAllNotes = [newNote, ...allNotesFromCase];
         }
         
-        const updatedNotes = [...otherUserNotes, ...updatedCurrentUserNotes];
-        await onUpdateCase({ ...caseData, myNotes: updatedNotes });
+        await onUpdateCase({ ...caseData, myNotes: updatedAllNotes });
         handleCloseModal();
     };
 
@@ -123,13 +209,13 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
             return;
         }
 
-        const currentUserNotes = [...notes]; // `notes` state is already filtered for the current user
+        const currentUserNotes = [...notes];
         const draggedItem = currentUserNotes.splice(dragNoteRef.current, 1)[0];
         currentUserNotes.splice(dragOverNoteRef.current, 0, draggedItem);
         
         const allNotesFromCase = Array.isArray(caseData.myNotes) ? caseData.myNotes : [];
-        const otherUserNotes = allNotesFromCase.filter(n => n.createdBy !== currentUser.id);
-        const finalNotes = [...otherUserNotes, ...currentUserNotes];
+        const nonVisibleNotes = allNotesFromCase.filter(n => !currentUserNotes.some(un => un.id === n.id));
+        const finalNotes = [...currentUserNotes, ...nonVisibleNotes];
         
         setNotes(currentUserNotes);
         onUpdateCase({ ...caseData, myNotes: finalNotes });
@@ -152,9 +238,9 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
                     <div className="flex items-center gap-3">
                         <IoJournalOutline className="text-2xl text-teal-600" />
                         <div>
-                            <h2 className="text-2xl font-bold text-slate-800">Mis Notas Rápidas</h2>
-                             <p className="text-sm text-slate-600">
-                                Tu espacio privado para anotaciones. Arrastra las notas para reordenarlas.
+                            <h2 className="text-2xl font-bold text-slate-800">Notas del Caso</h2>
+                            <p className="text-sm text-slate-600">
+                                Tus notas personales y notas compartidas con otros técnicos del caso.
                             </p>
                         </div>
                     </div>
@@ -182,6 +268,8 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
                                     note={note}
                                     onEdit={() => handleOpenModal(note)}
                                     onDelete={() => handleDeleteNote(note.id)}
+                                    currentUser={currentUser}
+                                    professionals={professionals}
                                 />
                             </div>
                         ))}
@@ -189,7 +277,7 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
                 ) : (
                      <div className="text-center py-20 px-4 bg-white rounded-lg border-2 border-dashed border-slate-200">
                         <h2 className="text-xl font-semibold text-slate-700">No hay notas todavía</h2>
-                        <p className="text-slate-500 mt-2">Crea tu primera nota para empezar a organizarte.</p>
+                        <p className="text-slate-500 mt-2">Crea tu primera nota personal o escribe una nota para otro técnico.</p>
                      </div>
                 )}
             </div>
@@ -199,6 +287,9 @@ const MyNotesView: React.FC<MyNotesViewProps> = ({ caseData, onUpdateCase, reque
                 onClose={handleCloseModal}
                 onSave={handleSaveNote}
                 initialData={editingNote}
+                professionals={professionals}
+                currentUser={currentUser}
+                caseProfessionalIds={caseData.professionalIds}
             />
         </>
     );

@@ -84,7 +84,7 @@ const App: React.FC = () => {
     const [isNewCaseModalOpen, setIsNewCaseModalOpen] = useState(false);
     const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-    const [tasksPanelState, setTasksPanelState] = useState<{ mode: 'closed' | 'single' | 'all'; caseData?: Case }>({ mode: 'closed' });
+    const [tasksPanelState, setTasksPanelState] = useState<{ mode: 'closed' | 'single' | 'all' | 'notes'; caseData?: Case }>({ mode: 'closed' });
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [taskToConvert, setTaskToConvert] = useState<Task | null>(null);
@@ -424,12 +424,13 @@ const App: React.FC = () => {
 
     const handleAddTask = async (caseId: string | null, taskText: string, assignedTo?: string[]) => {
         if (!currentUser) return;
+        const assigned = assignedTo && assignedTo.length > 0 ? assignedTo : [currentUser.id];
         const newTask: Task = {
             id: `task-${Date.now()}`,
             text: taskText,
             completed: false,
             createdBy: currentUser.id,
-            ...(caseId && { assignedTo: assignedTo && assignedTo.length > 0 ? assignedTo : [currentUser.id] }) // Add assignedTo only for case tasks
+            assignedTo: assigned
         };
         if (caseId) {
             const updatedCase = cases.find(c => c.id === caseId);
@@ -465,7 +466,7 @@ const App: React.FC = () => {
         setQuickNoteState({ isOpen: false, caseData: null });
     };
 
-    const handleSaveQuickNote = async (noteContent: string) => {
+    const handleSaveQuickNote = async (noteContent: string, assignedTo?: string[]) => {
         if (!quickNoteState.caseData || !currentUser) return;
 
         const targetCase = cases.find(c => c.id === quickNoteState.caseData!.id);
@@ -477,6 +478,7 @@ const App: React.FC = () => {
             color: 'yellow', // Default color for quick notes
             createdAt: new Date().toISOString(),
             createdBy: currentUser.id,
+            assignedTo: assignedTo && assignedTo.length > 0 ? assignedTo : [currentUser.id]
         };
         
         const currentNotes = Array.isArray(targetCase.myNotes) ? targetCase.myNotes : [];
@@ -548,11 +550,51 @@ const App: React.FC = () => {
     const handleUpdateGeneralTask = async (updatedTask: Task) => {
         const taskRef = doc(db, "generalTasks", updatedTask.id);
         try {
-            await updateDoc(taskRef, { text: updatedTask.text });
+            await updateDoc(taskRef, { 
+                text: updatedTask.text,
+                completed: updatedTask.completed,
+                ...(updatedTask.assignedTo ? { assignedTo: updatedTask.assignedTo } : {})
+            });
             setGeneralTasks(generalTasks.map(t => t.id === updatedTask.id ? updatedTask : t));
         } catch (error) {
             console.error("Error updating general task:", error);
         }
+    };
+
+    const handleDeleteNote = (caseId: string, noteId: string) => {
+        const targetCase = cases.find(c => c.id === caseId);
+        if (!targetCase) return;
+        requestConfirmation(
+            'Eliminar Nota',
+            '¿Estás seguro de que quieres eliminar esta nota? Esta acción no se puede deshacer.',
+            async () => {
+                const updatedNotes = (targetCase.myNotes || []).filter(n => n.id !== noteId);
+                await handleUpdateCase({ ...targetCase, myNotes: updatedNotes });
+            }
+        );
+    };
+
+    const handleUpdateNote = async (caseId: string, updatedNote: MyNote) => {
+        const targetCase = cases.find(c => c.id === caseId);
+        if (!targetCase) return;
+        const updatedNotes = (targetCase.myNotes || []).map(n => n.id === updatedNote.id ? updatedNote : n);
+        await handleUpdateCase({ ...targetCase, myNotes: updatedNotes });
+    };
+
+    const handleAddNoteToCase = async (caseId: string, content: string, color?: string, assignedTo?: string[]) => {
+        if (!currentUser) return;
+        const targetCase = cases.find(c => c.id === caseId);
+        if (!targetCase) return;
+        const newNote: MyNote = {
+            id: `note-${Date.now()}`,
+            content,
+            color: (color as 'yellow' | 'pink' | 'blue' | 'green') || 'yellow',
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser.id,
+            assignedTo: assignedTo && assignedTo.length > 0 ? assignedTo : [currentUser.id]
+        };
+        const currentNotes = targetCase.myNotes || [];
+        await handleUpdateCase({ ...targetCase, myNotes: [newNote, ...currentNotes] });
     };
 
     // Unified Note/Task Handling
@@ -575,7 +617,8 @@ const App: React.FC = () => {
                             content: data.content,
                             color: data.color || 'yellow',
                             createdAt: new Date().toISOString(),
-                            createdBy: currentUser.id
+                            createdBy: currentUser.id,
+                            assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : [currentUser.id]
                         };
                         const currentNotes = (targetCase.myNotes || []).filter(n => n.id !== newId);
                         await handleUpdateCase({ ...targetCase, myNotes: [newNote, ...currentNotes] });
@@ -585,7 +628,7 @@ const App: React.FC = () => {
                             text: data.content,
                             completed: data.isCompleted || false,
                             createdBy: currentUser.id,
-                            assignedTo: [currentUser.id]
+                            assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : [currentUser.id]
                         };
                         await handleUpdateCase({ ...targetCase, tasks: [...targetCase.tasks, newTask] });
                     }
@@ -596,7 +639,8 @@ const App: React.FC = () => {
                     id: newId,
                     text: data.content,
                     completed: data.isCompleted || false,
-                    createdBy: currentUser.id
+                    createdBy: currentUser.id,
+                    assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : [currentUser.id]
                 };
                 try {
                     const docRef = doc(db, "generalTasks", newTask.id);
@@ -651,11 +695,16 @@ const App: React.FC = () => {
                     updatedTasks = updatedTasks.filter(t => t.id !== itemId);
                 }
                 const existingNoteIndex = updatedNotes.findIndex(n => n.id === itemId);
+                const assignedTo = data.assignedTo && data.assignedTo.length > 0
+                    ? data.assignedTo
+                    : (existingNoteIndex > -1 ? updatedNotes[existingNoteIndex].assignedTo || [currentUser.id] : [currentUser.id]);
+
                 if (existingNoteIndex > -1) {
                     updatedNotes[existingNoteIndex] = {
                         ...updatedNotes[existingNoteIndex],
                         content: data.content,
-                        color: data.color || updatedNotes[existingNoteIndex].color || 'yellow'
+                        color: data.color || updatedNotes[existingNoteIndex].color || 'yellow',
+                        assignedTo
                     };
                 } else {
                     const newNote: MyNote = {
@@ -663,7 +712,8 @@ const App: React.FC = () => {
                         content: data.content,
                         color: data.color || 'yellow',
                         createdAt: new Date().toISOString(),
-                        createdBy: currentUser.id
+                        createdBy: currentUser.id,
+                        assignedTo
                     };
                     updatedNotes = [newNote, ...updatedNotes];
                 }
@@ -679,11 +729,16 @@ const App: React.FC = () => {
                     updatedNotes = updatedNotes.filter(n => n.id !== itemId);
                 }
                 const existingTaskIndex = updatedTasks.findIndex(t => t.id === itemId);
+                const assignedTo = data.assignedTo && data.assignedTo.length > 0
+                    ? data.assignedTo
+                    : (existingTaskIndex > -1 ? updatedTasks[existingTaskIndex].assignedTo || [currentUser.id] : [currentUser.id]);
+
                 if (existingTaskIndex > -1) {
                     updatedTasks[existingTaskIndex] = {
                         ...updatedTasks[existingTaskIndex],
                         text: data.content,
-                        completed: data.isCompleted !== undefined ? data.isCompleted : updatedTasks[existingTaskIndex].completed
+                        completed: data.isCompleted !== undefined ? data.isCompleted : updatedTasks[existingTaskIndex].completed,
+                        assignedTo
                     };
                 } else {
                     const newTask: Task = {
@@ -691,7 +746,7 @@ const App: React.FC = () => {
                         text: data.content,
                         completed: data.isCompleted || false,
                         createdBy: currentUser.id,
-                        assignedTo: [currentUser.id]
+                        assignedTo
                     };
                     updatedTasks = [...updatedTasks, newTask];
                 }
@@ -708,7 +763,8 @@ const App: React.FC = () => {
                 id: itemId,
                 text: data.content,
                 completed: data.isCompleted !== undefined ? data.isCompleted : (prevLoc.item.completed || false),
-                createdBy: prevLoc.item.createdBy || currentUser.id
+                createdBy: prevLoc.item.createdBy || currentUser.id,
+                assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : prevLoc.item.assignedTo
             };
             try {
                 await setDoc(taskRef, updatedGeneralTask, { merge: true });
@@ -745,7 +801,8 @@ const App: React.FC = () => {
                         content: data.content,
                         color: data.color || 'yellow',
                         createdAt: new Date().toISOString(),
-                        createdBy: currentUser.id
+                        createdBy: currentUser.id,
+                        assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : [currentUser.id]
                     };
                     const targetNotes = (targetCase.myNotes || []).filter(n => n.id !== itemId);
                     await handleUpdateCase({ ...targetCase, myNotes: [newNote, ...targetNotes] });
@@ -755,7 +812,7 @@ const App: React.FC = () => {
                         text: data.content,
                         completed: data.isCompleted || false,
                         createdBy: currentUser.id,
-                        assignedTo: [currentUser.id]
+                        assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : [currentUser.id]
                     };
                     const targetTasks = (targetCase.tasks || []).filter(t => t.id !== itemId);
                     await handleUpdateCase({ ...targetCase, tasks: [...targetTasks, newTask] });
@@ -767,7 +824,8 @@ const App: React.FC = () => {
                 id: itemId,
                 text: data.content,
                 completed: data.isCompleted || false,
-                createdBy: currentUser.id
+                createdBy: currentUser.id,
+                assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : [currentUser.id]
             };
             try {
                 const docRef = doc(db, "generalTasks", itemId);
@@ -1479,6 +1537,7 @@ const App: React.FC = () => {
                             onSaveItem={handleSaveUnifiedNote}
                             onDeleteItem={handleDeleteUnifiedItem}
                             onToggleTask={handleToggleUnifiedTask}
+                            professionals={professionals}
                         />;
             case 'cases':
             default:
@@ -1582,6 +1641,7 @@ const App: React.FC = () => {
                                     onSelectCaseById={handleSelectCaseById} 
                                     onSetStatusFilter={setStatusFilter}
                                     onOpenAllTasks={() => setTasksPanelState({ mode: 'all' })}
+                                    onOpenNotesPanel={() => setTasksPanelState({ mode: 'notes' })}
                                     onSaveIntervention={handleSaveIntervention}
                                     onDeleteIntervention={handleDeleteIntervention}
                                     requestConfirmation={requestConfirmation}
@@ -1787,6 +1847,9 @@ const App: React.FC = () => {
                 onTaskToEntry={setTaskToConvert}
                 onSelectCaseById={handleSelectCaseById}
                 currentUser={currentUser}
+                onDeleteNote={handleDeleteNote}
+                onUpdateNote={handleUpdateNote}
+                onAddNote={handleAddNoteToCase}
             />
              <ConfirmationModal
                 isOpen={!!confirmationState?.isOpen}
@@ -1800,6 +1863,9 @@ const App: React.FC = () => {
                 onClose={handleCloseQuickNoteModal}
                 onSave={handleSaveQuickNote}
                 caseName={quickNoteState.caseData?.nickname ? `${quickNoteState.caseData?.name} (${quickNoteState.caseData?.nickname})` : quickNoteState.caseData?.name || ''}
+                professionals={professionals}
+                currentUser={currentUser}
+                caseProfessionalIds={quickNoteState.caseData?.professionalIds}
             />
             {currentUserProfessional && (
                  <ProfileEditorModal

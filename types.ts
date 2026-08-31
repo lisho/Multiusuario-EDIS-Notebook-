@@ -156,6 +156,7 @@ export interface MyNote {
     color: 'yellow' | 'pink' | 'blue' | 'green';
     createdAt: string; // ISO string
     createdBy?: string;
+    assignedTo?: string[]; // IDs of professionals to whom the note is directed or assigned
 }
 
 export interface Case {
