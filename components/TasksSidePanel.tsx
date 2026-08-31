@@ -994,7 +994,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                             <div className="flex items-center justify-between gap-2">
                                 <div className="flex-grow">
                                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                                        Seleccionar Caso:
+                                        Asociar a:
                                     </label>
                                     <select
                                         value={selectedTargetCaseId}
@@ -1029,11 +1029,11 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
 
                             {/* PROFESSIONAL ASSIGNMENT PICKER */}
                             <ProfessionalAssignSelector
-                                professionals={professionals}
+                                professionals={edisTechnicians}
                                 selectedIds={selectedAssignees}
                                 onChange={setSelectedAssignees}
                                 currentUser={currentUser}
-                                label="Asignar nota a:"
+                                label="Asignar nota a técnico/a EDIS:"
                             />
 
                             <div className="flex gap-2 items-end">
@@ -1069,7 +1069,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                         <option value="">📋 Tarea General (Sin caso asociado)</option>
                                         {allCases.map(c => (
                                             <option key={c.id} value={c.id}>
-                                                📁 Caso: {c.name} {c.nickname ? `(${c.nickname})` : ''}
+                                                📁 {c.name} {c.nickname ? `(${c.nickname})` : ''}
                                             </option>
                                         ))}
                                     </select>

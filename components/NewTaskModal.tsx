@@ -123,7 +123,7 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose, onAddTask,
               <option value="">📋 Tarea General (Sin caso asociado)</option>
               {activeCases.map(c => (
                 <option key={c.id} value={c.id}>
-                  📁 Caso: {c.name} {c.nickname ? `(${c.nickname})` : ''}
+                  📁 {c.name} {c.nickname ? `(${c.nickname})` : ''}
                 </option>
               ))}
             </select>

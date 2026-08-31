@@ -52,21 +52,16 @@ const UnifiedNoteModal: React.FC<UnifiedNoteModalProps> = ({
     const [error, setError] = useState<string | null>(null);
 
     const availableProfessionals = useMemo(() => {
-        let list = professionals;
-        if (type === 'task') {
-            list = list.filter(p => p.role === ProfessionalRole.EdisTechnician);
-        } else {
-            list = list.filter(p => p.systemRole !== 'admin');
-        }
+        const edisList = professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
         if (caseId) {
             const selectedCase = cases.find(c => c.id === caseId);
             if (selectedCase?.professionalIds && selectedCase.professionalIds.length > 0) {
-                const caseProfs = list.filter(p => selectedCase.professionalIds!.includes(p.id));
-                return caseProfs.length > 0 ? caseProfs : list;
+                const caseProfs = edisList.filter(p => selectedCase.professionalIds!.includes(p.id));
+                return caseProfs.length > 0 ? caseProfs : edisList;
             }
         }
-        return list;
-    }, [professionals, cases, caseId, type]);
+        return edisList;
+    }, [professionals, cases, caseId]);
 
     useEffect(() => {
         if (isOpen) {
@@ -177,7 +172,7 @@ const UnifiedNoteModal: React.FC<UnifiedNoteModalProps> = ({
                             onClick={() => handleTypeChange('task')}
                             className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold transition-colors ${type === 'task' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
-                            <IoCheckboxOutline className="text-lg" /> Tarea (Solo EDIS)
+                            <IoCheckboxOutline className="text-lg" /> Tarea
                         </button>
                     </div>
 
@@ -209,7 +204,7 @@ const UnifiedNoteModal: React.FC<UnifiedNoteModalProps> = ({
                         <div>
                             <div className="flex justify-between items-center mb-1.5">
                                 <label className="block text-sm font-semibold text-slate-700">
-                                    {type === 'note' ? 'Asignar / Dirigir nota a:' : 'Asignar tarea a técnico/a EDIS:'}
+                                    {type === 'note' ? 'Asignar nota a técnico/a EDIS:' : 'Asignar tarea a técnico/a EDIS:'}
                                 </label>
                                 <div className="flex items-center gap-1.5">
                                     {currentUser && (

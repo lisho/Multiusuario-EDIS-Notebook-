@@ -1538,6 +1538,11 @@ const App: React.FC = () => {
                             onDeleteItem={handleDeleteUnifiedItem}
                             onToggleTask={handleToggleUnifiedTask}
                             professionals={professionals}
+                            onSelectCaseById={handleSelectCaseById}
+                            onTaskToEntry={(task, caseId) => {
+                                setTaskToConvert(task);
+                                handleSelectCaseById(caseId, 'timeline');
+                            }}
                         />;
             case 'cases':
             default:

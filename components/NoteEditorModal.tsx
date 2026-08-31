@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MyNote, Professional, User } from '../types';
+import { MyNote, Professional, ProfessionalRole, User } from '../types';
 import { IoCloseOutline, IoSaveOutline, IoPersonOutline } from 'react-icons/io5';
 
 interface NoteEditorModalProps {
@@ -36,12 +36,12 @@ const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
     const [assignedTo, setAssignedTo] = useState<string[]>([]);
 
     const availableProfessionals = React.useMemo(() => {
-        // If caseProfessionalIds provided, prioritize those or show non-admin professionals
-        const activeProfs = professionals.filter(p => p.systemRole !== 'admin');
+        const edisProfs = professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
         if (caseProfessionalIds && caseProfessionalIds.length > 0) {
-            return activeProfs.filter(p => caseProfessionalIds.includes(p.id));
+            const caseProfs = edisProfs.filter(p => caseProfessionalIds.includes(p.id));
+            return caseProfs.length > 0 ? caseProfs : edisProfs;
         }
-        return activeProfs;
+        return edisProfs;
     }, [professionals, caseProfessionalIds]);
 
     useEffect(() => {
@@ -125,7 +125,7 @@ const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
                         <div>
                             <div className="flex justify-between items-center mb-1.5">
                                 <label className="block text-sm font-semibold text-slate-700">
-                                    Asignar / Dirigir nota a:
+                                    Asignar nota a técnico/a EDIS:
                                 </label>
                                 <div className="flex items-center gap-1.5">
                                     {currentUser && (
