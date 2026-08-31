@@ -1074,18 +1074,18 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                 </div>
                 
                 {/* BOTTOM CREATION BAR (FOR NOTES & TASKS WITH COMPLETE ASSIGNMENT CAPABILITY) */}
-                <div className="p-4 border-t border-slate-200 bg-white flex-shrink-0 shadow-lg space-y-3">
+                <div className="p-4 border-t border-amber-200 bg-amber-50/90 flex-shrink-0 shadow-lg space-y-3">
                     {mode === 'notes' ? (
                         <form onSubmit={handleCreateItem} className="space-y-3">
                             <div className="flex items-center justify-between gap-2">
                                 <div className="flex-grow">
-                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                    <label className="block text-[11px] font-semibold text-amber-900 mb-1">
                                         Asociar a:
                                     </label>
                                     <select
                                         value={selectedTargetCaseId}
                                         onChange={(e) => setSelectedTargetCaseId(e.target.value)}
-                                        className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-800 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                                        className="w-full text-xs border border-amber-300/80 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 focus:ring-1 focus:ring-amber-500 focus:outline-none shadow-2xs"
                                         required
                                     >
                                         {allCases.map(c => (
@@ -1096,7 +1096,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                     </select>
                                 </div>
                                 <div className="flex-shrink-0">
-                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                    <label className="block text-[11px] font-semibold text-amber-900 mb-1">
                                         Color:
                                     </label>
                                     <div className="flex items-center gap-1">
@@ -1128,7 +1128,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                     onChange={(e) => setNewItemText(e.target.value)}
                                     placeholder="Escribe una nota adhesiva..."
                                     rows={2}
-                                    className="flex-grow px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-slate-50 text-slate-900 placeholder:text-slate-400 border-slate-300 focus:ring-teal-500 resize-none"
+                                    className="flex-grow px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-white text-slate-900 placeholder:text-slate-400 border-amber-300/80 focus:ring-amber-500 resize-none shadow-2xs"
                                 />
                                 <button 
                                     type="submit" 
@@ -1144,13 +1144,13 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                         <form onSubmit={handleCreateItem} className="space-y-3">
                             {mode === 'all' && (
                                 <div>
-                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                    <label className="block text-[11px] font-semibold text-amber-900 mb-1">
                                         Destino de la tarea:
                                     </label>
                                     <select
                                         value={selectedTargetCaseId}
                                         onChange={(e) => setSelectedTargetCaseId(e.target.value)}
-                                        className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-800 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                                        className="w-full text-xs border border-amber-300/80 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 focus:ring-1 focus:ring-amber-500 focus:outline-none shadow-2xs"
                                     >
                                         <option value="">📋 Tarea General (Sin caso asociado)</option>
                                         {allCases.map(c => (
@@ -1183,7 +1183,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                                 ? "Añadir tarea al caso seleccionado..."
                                                 : "Añadir tarea general..."
                                     }
-                                    className="flex-grow px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-slate-50 text-slate-900 placeholder:text-slate-400 border-slate-300 focus:ring-teal-500"
+                                    className="flex-grow px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-white text-slate-900 placeholder:text-slate-400 border-amber-300/80 focus:ring-amber-500 shadow-2xs"
                                 />
                                 <button 
                                     type="submit" 

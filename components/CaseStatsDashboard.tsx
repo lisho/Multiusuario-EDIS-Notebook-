@@ -259,8 +259,11 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                 const isOnToday = new Date(event.start).toDateString() === todayString;
                 if (!isOnToday) return false;
 
-                // All users, including admins, see only interventions they have created for the day.
-                return event.createdBy === currentUser.id;
+                // Users see interventions where they are assigned or which they created
+                const isAssigned = Boolean(event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.includes(currentUser.id));
+                const isCreator = event.createdBy === currentUser.id;
+
+                return isAssigned || isCreator;
             })
             .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
     }, [cases, generalInterventions, currentUser]);
