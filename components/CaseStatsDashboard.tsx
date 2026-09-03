@@ -394,30 +394,87 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         const pendingGeneralNotesCount = generalNotes.filter(isAssignedToMe).length;
         const pendingNotesCount = pendingCaseNotesCount + pendingGeneralNotesCount;
         
-        // Find cases with notebook entries (interventions registered in the notebook)
-        const casesWithNotebookEntries: { caseItem: Case; latestNotebookDate: string }[] = [];
-
-        activeCases.forEach(c => {
-            const notebookInterventions = (c.interventions || []).filter(i => i.isRegistered);
-            if (notebookInterventions.length > 0) {
-                // Find the latest date among notebook interventions
-                const latestDate = notebookInterventions.reduce((latest, current) => {
-                    const currentTime = new Date(current.start).getTime();
-                    const latestTime = new Date(latest).getTime();
-                    return currentTime > latestTime ? current.start : latest;
-                }, notebookInterventions[0].start);
-
-                casesWithNotebookEntries.push({
-                    caseItem: c,
-                    latestNotebookDate: latestDate
-                });
-            }
+        // Casos asignados al usuario actual (activos)
+        const myAssignedActiveCases = activeCases.filter(c => {
+            if (!currentUser) return true;
+            if (currentUser.role === 'admin') return true;
+            return c.professionalIds && c.professionalIds.includes(currentUser.id);
         });
 
-        // Sort by the latest notebook entry date descending, and take the top 5
-        casesWithNotebookEntries.sort((a, b) => new Date(b.latestNotebookDate).getTime() - new Date(a.latestNotebookDate).getTime());
+        // Calculate latest modification date and updater for each assigned case
+        const todayDateString = new Date().toDateString();
 
-        const recentlyUpdated = casesWithNotebookEntries.slice(0, 5);
+        const casesWithActivity = myAssignedActiveCases.map(c => {
+            // Check all interventions (registered notebook or general events on the case)
+            let latestActivityTime = 0;
+            let latestActivityIso = c.lastUpdate || '';
+            let latestUpdaterId: string | undefined = undefined;
+
+            // 1. Check case lastUpdate timestamp
+            if (c.lastUpdate) {
+                const t = new Date(c.lastUpdate).getTime();
+                if (!isNaN(t) && t > latestActivityTime) {
+                    latestActivityTime = t;
+                    latestActivityIso = c.lastUpdate;
+                }
+            }
+
+            // 2. Check interventions for explicit updatedAt or createdAt or start
+            (c.interventions || []).forEach(i => {
+                const intUpdatedTime = i.updatedAt ? new Date(i.updatedAt).getTime() : 0;
+                const intCreatedTime = i.createdAt ? new Date(i.createdAt).getTime() : 0;
+                const intStartTime = i.start ? new Date(i.start).getTime() : 0;
+
+                const bestIntTime = Math.max(intUpdatedTime, intCreatedTime, (i.isRegistered ? intStartTime : 0));
+                if (bestIntTime > latestActivityTime) {
+                    latestActivityTime = bestIntTime;
+                    latestActivityIso = i.updatedAt || i.createdAt || i.start;
+                    latestUpdaterId = i.updatedBy || i.createdBy;
+                }
+            });
+
+            // 3. Check quick notes
+            (c.myNotes || []).forEach(n => {
+                const noteTime = n.createdAt ? new Date(n.createdAt).getTime() : 0;
+                if (noteTime > latestActivityTime) {
+                    latestActivityTime = noteTime;
+                    latestActivityIso = n.createdAt;
+                    latestUpdaterId = n.createdBy;
+                }
+            });
+
+            // 4. Check intervention records
+            (c.interventionRecords || []).forEach(r => {
+                const recordTime = r.date ? new Date(r.date).getTime() : 0;
+                if (recordTime > latestActivityTime) {
+                    latestActivityTime = recordTime;
+                    latestActivityIso = r.date;
+                    latestUpdaterId = r.createdBy;
+                }
+            });
+
+            const isModifiedToday = latestActivityIso ? new Date(latestActivityIso).toDateString() === todayDateString : false;
+
+            return {
+                caseItem: c,
+                latestActivityIso,
+                latestActivityTime,
+                latestUpdaterId,
+                isModifiedToday
+            };
+        }).filter(item => item.latestActivityTime > 0);
+
+        // Sort: all items modified today first (descending by time), then rest of cases descending by time
+        casesWithActivity.sort((a, b) => {
+            if (a.isModifiedToday && !b.isModifiedToday) return -1;
+            if (!a.isModifiedToday && b.isModifiedToday) return 1;
+            return b.latestActivityTime - a.latestActivityTime;
+        });
+
+        // Always show ALL cases modified today (at least), or if fewer than 5, show top 5 recent ones
+        const countToday = casesWithActivity.filter(item => item.isModifiedToday).length;
+        const targetLimit = Math.max(5, countToday);
+        const recentlyUpdated = casesWithActivity.slice(0, targetLimit);
 
         return { pendingTasksCount, pendingNotesCount, recentlyUpdated };
     }, [cases, generalTasks, generalNotes, currentUser]);
@@ -1039,23 +1096,53 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                     
                     <AnimatedItem delay={300}>
                         <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
-                            <div className="flex items-center gap-2 mb-3">
-                                <IoTimeOutline className="text-teal-600 text-xl" />
-                                <h3 className="font-semibold text-slate-800">Actualizados Recientemente</h3>
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <IoTimeOutline className="text-teal-600 text-xl" />
+                                    <h3 className="font-semibold text-slate-800">Actualizados Recientemente</h3>
+                                </div>
+                                <span className="text-2xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                    Mis casos asignados
+                                </span>
                             </div>
                             {stats.recentlyUpdated.length > 0 ? (
-                                <ul className="space-y-2 text-sm">
-                                    {stats.recentlyUpdated.map(({ caseItem: c, latestNotebookDate }) => (
-                                        <li key={c.id} className="flex justify-between items-center">
-                                            <button onClick={() => onSelectCaseById(c.id)} className="text-teal-700 hover:underline font-medium truncate text-left" title={`Abrir caso de ${c.name}`}>
-                                                {c.name}
-                                            </button>
-                                            <span className="text-slate-500 flex-shrink-0 ml-2">{timeSinceSpanish(latestNotebookDate)}</span>
-                                        </li>
-                                    ))}
+                                <ul className="space-y-2.5 text-sm divide-y divide-slate-100">
+                                    {stats.recentlyUpdated.map(({ caseItem: c, latestActivityIso, latestUpdaterId, isModifiedToday }, idx) => {
+                                        const updaterProf = latestUpdaterId ? professionals.find(p => p.id === latestUpdaterId) : null;
+                                        const updaterName = updaterProf 
+                                            ? (updaterProf.id === currentUser?.id ? 'Tú' : updaterProf.name.split(' ')[0])
+                                            : null;
+
+                                        return (
+                                            <li key={c.id} className={`flex justify-between items-center ${idx > 0 ? 'pt-2' : ''}`}>
+                                                <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
+                                                    {isModifiedToday && (
+                                                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" title="Modificado hoy" />
+                                                    )}
+                                                    <button 
+                                                        onClick={() => onSelectCaseById(c.id)} 
+                                                        className="text-teal-700 hover:underline font-medium truncate text-left" 
+                                                        title={`Abrir caso de ${c.name}`}
+                                                    >
+                                                        {c.name}
+                                                    </button>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 flex-shrink-0 text-xs text-slate-500">
+                                                    {updaterName && (
+                                                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-2xs font-medium">
+                                                            {updaterName}
+                                                        </span>
+                                                    )}
+                                                    <span className={isModifiedToday ? 'font-semibold text-emerald-700' : 'text-slate-500'}>
+                                                        {timeSinceSpanish(latestActivityIso)}
+                                                    </span>
+                                                </div>
+                                            </li>
+                                        );
+                                    })}
                                 </ul>
                             ) : (
-                                <p className="text-xs text-slate-400 italic">No hay casos con actuaciones en el cuaderno.</p>
+                                <p className="text-xs text-slate-400 italic">No hay actividad reciente en tus casos asignados.</p>
                             )}
                         </div>
                     </AnimatedItem>

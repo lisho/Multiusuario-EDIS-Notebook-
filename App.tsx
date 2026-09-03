@@ -1157,11 +1157,25 @@ const App: React.FC = () => {
     const handleSaveIntervention = async (intervention: Omit<Intervention, 'id'> | Intervention) => {
         if (!currentUser) return;
         const isEditing = 'id' in intervention;
+        const nowIso = new Date().toISOString();
         
         try {
             let finalIntervention: Intervention = isEditing
-                ? intervention as Intervention
-                : { ...intervention, id: `int-${Date.now()}`, createdBy: currentUser.id, ...(intervention as any) };
+                ? { 
+                    ...(intervention as Intervention), 
+                    updatedAt: nowIso, 
+                    updatedBy: currentUser.id,
+                    createdAt: (intervention as Intervention).createdAt || (intervention as Intervention).start || nowIso
+                  }
+                : { 
+                    ...intervention, 
+                    id: `int-${Date.now()}`, 
+                    createdBy: currentUser.id, 
+                    createdAt: nowIso,
+                    updatedAt: nowIso,
+                    updatedBy: currentUser.id,
+                    ...(intervention as any) 
+                  };
             
             finalIntervention = Object.entries(finalIntervention).reduce((acc, [key, value]) => {
                 if (value !== undefined) {

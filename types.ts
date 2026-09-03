@@ -124,6 +124,9 @@ export interface Intervention {
     cancellationTime?: string; // ISO string
     createdBy?: string;
     assignedTo?: string[];
+    createdAt?: string; // ISO string
+    updatedAt?: string; // ISO string
+    updatedBy?: string; // ID of technician who created or last modified
 }
 
 export interface InterventionRecord {
