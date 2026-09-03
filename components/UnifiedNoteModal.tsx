@@ -192,11 +192,6 @@ const UnifiedNoteModal: React.FC<UnifiedNoteModalProps> = ({
                                 </option>
                             ))}
                         </select>
-                        {type === 'note' && !caseId && (
-                            <p className="text-xs text-amber-600 mt-1">
-                                * Las notas generales se guardarán como tareas sin fecha.
-                            </p>
-                        )}
                     </div>
 
                     {/* Assignee / Recipient Selector */}

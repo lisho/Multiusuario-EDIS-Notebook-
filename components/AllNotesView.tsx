@@ -26,6 +26,7 @@ import TechnicianAvatar from './TechnicianAvatar';
 interface AllNotesViewProps {
     cases: Case[];
     generalTasks: Task[];
+    generalNotes?: MyNote[];
     onBack: () => void;
     currentUser: User;
     onSaveItem: (data: UnifiedItemData) => void;
@@ -59,6 +60,7 @@ const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').su
 const AllNotesView: React.FC<AllNotesViewProps> = ({ 
     cases, 
     generalTasks, 
+    generalNotes = [],
     onBack, 
     currentUser, 
     onSaveItem, 
@@ -99,13 +101,31 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
     const allGroups = useMemo<GroupedData[]>(() => {
         const result: GroupedData[] = [];
 
-        // 1. General Tasks
+        // 1. General Items (Tasks & Notes without case)
         const myGeneralTasks = generalTasks.filter(isVisibleToUser);
-        if (myGeneralTasks.length > 0) {
+        const myGeneralNotes = generalNotes.filter(isVisibleToUser);
+
+        if (myGeneralTasks.length > 0 || myGeneralNotes.length > 0) {
             const seenGenIds = new Set<string>();
             const genItems: (UnifiedItemData & { createdBy?: string })[] = [];
+
+            myGeneralNotes.forEach(n => {
+                if (n && n.id && !seenGenIds.has(n.id)) {
+                    seenGenIds.add(n.id);
+                    genItems.push({
+                        id: n.id,
+                        content: n.content,
+                        type: 'note',
+                        caseId: null,
+                        color: n.color,
+                        assignedTo: n.assignedTo || (n.createdBy ? [n.createdBy] : []),
+                        createdBy: n.createdBy
+                    });
+                }
+            });
+
             myGeneralTasks.forEach(t => {
-                if (!seenGenIds.has(t.id)) {
+                if (t && t.id && !seenGenIds.has(t.id)) {
                     seenGenIds.add(t.id);
                     genItems.push({
                         id: t.id,
@@ -362,7 +382,7 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
                     </div>
 
                     {/* Type Filter Pills */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-thin">
+                    <div className="flex flex-wrap items-center gap-1.5">
                         <button
                             onClick={() => setTypeFilter('all')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${

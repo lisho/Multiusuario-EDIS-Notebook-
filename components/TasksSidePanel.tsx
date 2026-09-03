@@ -365,8 +365,8 @@ const TaskItem: React.FC<TaskItemProps> = ({
 
 interface NoteItemProps {
     note: MyNote;
-    caseId: string;
-    onUpdate: (updatedNote: MyNote, targetCaseId?: string) => void;
+    caseId: string | null;
+    onUpdate: (updatedNote: MyNote, targetCaseId?: string | null) => void;
     onDelete: () => void;
     professionals?: Professional[];
     currentUser?: User | null;
@@ -377,7 +377,7 @@ interface NoteItemProps {
 
 const NoteItem: React.FC<NoteItemProps> = ({ 
     note, 
-    caseId,
+    caseId, 
     onUpdate, 
     onDelete, 
     professionals = [], 
@@ -390,7 +390,7 @@ const NoteItem: React.FC<NoteItemProps> = ({
     const [editText, setEditText] = useState(note.content);
     const [editColor, setEditColor] = useState<'yellow' | 'pink' | 'blue' | 'green'>(note.color || 'yellow');
     const [editAssignedTo, setEditAssignedTo] = useState<string[]>(note.assignedTo || (currentUser ? [currentUser.id] : []));
-    const [editCaseId, setEditCaseId] = useState<string>(caseId);
+    const [editCaseId, setEditCaseId] = useState<string>(caseId || '');
 
     const colorConfig = noteColorClasses[note.color || 'yellow'] || noteColorClasses.yellow;
 
@@ -413,7 +413,7 @@ const NoteItem: React.FC<NoteItemProps> = ({
                 content: editText.trim(),
                 color: editColor,
                 assignedTo: editAssignedTo.length > 0 ? editAssignedTo : (currentUser ? [currentUser.id] : [])
-            }, editCaseId || caseId);
+            }, editCaseId || null);
         }
         setIsEditing(false);
     };
@@ -430,25 +430,24 @@ const NoteItem: React.FC<NoteItemProps> = ({
                     placeholder="Escribe la nota..."
                 />
 
-                {allCases.length > 0 && (
-                    <div className="space-y-1">
-                        <label className="block text-[11px] font-semibold text-slate-700 flex items-center gap-1">
-                            <IoFolderOpenOutline className="text-xs text-teal-600" />
-                            Asociar al caso:
-                        </label>
-                        <select
-                            value={editCaseId}
-                            onChange={(e) => setEditCaseId(e.target.value)}
-                            className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 focus:ring-1 focus:ring-teal-500 focus:outline-none"
-                        >
-                            {allCases.map(c => (
-                                <option key={c.id} value={c.id}>
-                                    📁 {c.name} {c.nickname ? `(${c.nickname})` : ''}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                )}
+                <div className="space-y-1">
+                    <label className="block text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                        <IoFolderOpenOutline className="text-xs text-teal-600" />
+                        Asociar al caso:
+                    </label>
+                    <select
+                        value={editCaseId}
+                        onChange={(e) => setEditCaseId(e.target.value)}
+                        className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                    >
+                        <option value="">📌 General / Sin caso</option>
+                        {allCases.map(c => (
+                            <option key={c.id} value={c.id}>
+                                📁 {c.name} {c.nickname ? `(${c.nickname})` : ''}
+                            </option>
+                        ))}
+                    </select>
+                </div>
                 
                 <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-semibold text-slate-700">Color:</span>
@@ -576,6 +575,7 @@ interface TasksSidePanelProps {
     caseData?: Case;
     allCases: Case[];
     generalTasks: Task[];
+    generalNotes?: MyNote[];
     professionals: Professional[];
     onClose: () => void;
     onAddTask: (caseId: string | null, taskText: string, assignedTo?: string[]) => void;
@@ -588,11 +588,11 @@ interface TasksSidePanelProps {
     onTaskToEntry: (task: Task) => void;
     onSelectCaseById: (caseId: string, view: DashboardView) => void;
     currentUser: User | null;
-    onDeleteNote?: (caseId: string, noteId: string) => void;
-    onUpdateNote?: (caseId: string, note: MyNote) => void;
-    onAddNote?: (caseId: string, content: string, color?: string, assignedTo?: string[]) => void;
+    onDeleteNote?: (caseId: string | null, noteId: string) => void;
+    onUpdateNote?: (caseId: string | null, note: MyNote) => void;
+    onAddNote?: (caseId: string | null, content: string, color?: string, assignedTo?: string[]) => void;
     onUpdateTaskWithCase?: (originalCaseId: string | null, targetCaseId: string | null, updatedTask: Task) => void;
-    onUpdateNoteWithCase?: (originalCaseId: string, targetCaseId: string, updatedNote: MyNote) => void;
+    onUpdateNoteWithCase?: (originalCaseId: string | null, targetCaseId: string | null, updatedNote: MyNote) => void;
 }
 
 const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
@@ -601,6 +601,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
         caseData, 
         allCases, 
         generalTasks, 
+        generalNotes = [],
         professionals, 
         onClose, 
         onAddTask, 
@@ -633,7 +634,8 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
 
     // Filter & Search State
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterTab, setFilterTab] = useState<'all' | 'assigned_to_me' | 'created_by_me' | 'general' | 'pending' | 'completed'>('all');
+    const [statusFilter, setStatusFilter] = useState<'pending' | 'completed' | 'all'>('pending');
+    const [assigneeFilter, setAssigneeFilter] = useState<'all' | 'assigned_to_me' | 'assigned_to_others' | 'created_by_me'>('all');
     
     const isOpen = mode !== 'closed';
 
@@ -656,7 +658,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
         }
     };
 
-    const handleNoteUpdate = (originalCaseId: string, targetCaseId: string, updatedNote: MyNote) => {
+    const handleNoteUpdate = (originalCaseId: string | null, targetCaseId: string | null, updatedNote: MyNote) => {
         if (onUpdateNoteWithCase) {
             onUpdateNoteWithCase(originalCaseId, targetCaseId, updatedNote);
         } else if (originalCaseId === targetCaseId) {
@@ -674,11 +676,20 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
         }
         if (mode === 'single' && caseData) {
             setSelectedTargetCaseId(caseData.id);
+        } else if (mode === 'notes') {
+            setSelectedTargetCaseId('');
         } else if (allCases.length > 0) {
-            setSelectedTargetCaseId(mode === 'notes' ? allCases[0].id : '');
+            setSelectedTargetCaseId('');
         }
         setSearchQuery('');
-        setFilterTab('all');
+        if (mode === 'notes') {
+            setStatusFilter('all');
+            setAssigneeFilter('all');
+        } else {
+            // Por defecto activada la pestaña de pendientes al abrir tareas
+            setStatusFilter('pending');
+            setAssigneeFilter('all');
+        }
     }, [mode, caseData, currentUser, allCases]);
 
     const isItemVisible = (item: { createdBy?: string; assignedTo?: string[] }) => {
@@ -697,10 +708,27 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
             return false;
         }
 
-        if (filterTab === 'pending' && item.completed === true) return false;
-        if (filterTab === 'completed' && item.completed === false) return false;
-        if (filterTab === 'assigned_to_me' && currentUser && !item.assignedTo?.includes(currentUser.id)) return false;
-        if (filterTab === 'created_by_me' && currentUser && item.createdBy !== currentUser.id) return false;
+        // Status filter (only for items with completed property)
+        if (item.completed !== undefined) {
+            if (statusFilter === 'pending' && item.completed === true) return false;
+            if (statusFilter === 'completed' && item.completed === false) return false;
+        }
+
+        // Assignee / Scope filter
+        if (assigneeFilter === 'assigned_to_me') {
+            if (!currentUser) return true;
+            const isAssigned = item.assignedTo?.includes(currentUser.id);
+            const isLegacy = (!item.assignedTo || item.assignedTo.length === 0) && item.createdBy === currentUser.id;
+            return !!(isAssigned || isLegacy);
+        }
+        if (assigneeFilter === 'assigned_to_others') {
+            if (!currentUser) return false;
+            return item.createdBy === currentUser.id && 
+                   !!item.assignedTo && 
+                   item.assignedTo.length > 0 && 
+                   !item.assignedTo.includes(currentUser.id);
+        }
+        if (assigneeFilter === 'created_by_me' && currentUser && item.createdBy !== currentUser.id) return false;
 
         return true;
     };
@@ -719,20 +747,22 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
             });
         }
         return grouped;
-    }, [allCases, mode, currentUser, searchQuery, filterTab]);
+    }, [allCases, mode, currentUser, searchQuery, statusFilter, assigneeFilter]);
 
     const visibleGeneralTasks = useMemo(() => {
-        if (filterTab === 'assigned_to_me' || filterTab === 'created_by_me' || filterTab === 'all' || filterTab === 'pending' || filterTab === 'completed') {
-            return generalTasks.filter(isItemVisible).filter(matchesFilter);
-        }
-        return [];
-    }, [generalTasks, currentUser, searchQuery, filterTab]);
+        return generalTasks.filter(isItemVisible).filter(matchesFilter);
+    }, [generalTasks, currentUser, searchQuery, statusFilter, assigneeFilter]);
+
+    const visibleGeneralNotes = useMemo(() => {
+        if (mode !== 'notes') return [];
+        return generalNotes.filter(isItemVisible).filter(matchesFilter);
+    }, [generalNotes, mode, currentUser, searchQuery, statusFilter, assigneeFilter]);
 
     // Single mode tasks
     const singleModeTasks = useMemo(() => {
         if (mode !== 'single' || !caseData) return [];
         return caseData.tasks.filter(isItemVisible).filter(matchesFilter);
-    }, [mode, caseData, currentUser, searchQuery, filterTab]);
+    }, [mode, caseData, currentUser, searchQuery, statusFilter, assigneeFilter]);
 
     // Notes grouped by case
     const notesByCase = useMemo<{ caseItem: Case; notes: MyNote[] }[]>(() => {
@@ -746,15 +776,33 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                 };
             })
             .filter(group => group.notes.length > 0);
-    }, [allCases, mode, currentUser, searchQuery, filterTab]);
+    }, [allCases, mode, currentUser, searchQuery, statusFilter, assigneeFilter]);
 
     const totalNotesCount = useMemo(() => {
-        return allCases.reduce((acc, c) => acc + (c.myNotes || []).filter(isItemVisible).length, 0);
-    }, [allCases, currentUser]);
+        const isMyNote = (n: MyNote) => {
+            if (!currentUser) return true;
+            if (n.assignedTo && n.assignedTo.length > 0) {
+                return n.assignedTo.includes(currentUser.id);
+            }
+            return n.createdBy === currentUser.id;
+        };
+        const genCount = generalNotes.filter(isMyNote).length;
+        const caseCount = allCases.reduce((acc, c) => acc + (c.myNotes || []).filter(isMyNote).length, 0);
+        return genCount + caseCount;
+    }, [allCases, generalNotes, currentUser]);
 
+    // Cuenta SOLO las tareas pendientes asignadas al usuario actual
     const totalTasksCount = useMemo(() => {
-        const generalCount = generalTasks.filter(isItemVisible).filter(t => !t.completed).length;
-        const casesCount = allCases.reduce((acc, c) => acc + (c.tasks || []).filter(isItemVisible).filter(t => !t.completed).length, 0);
+        const isMyPending = (t: Task) => {
+            if (t.completed) return false;
+            if (!currentUser) return true;
+            if (t.assignedTo && t.assignedTo.length > 0) {
+                return t.assignedTo.includes(currentUser.id);
+            }
+            return t.createdBy === currentUser.id;
+        };
+        const generalCount = generalTasks.filter(isMyPending).length;
+        const casesCount = allCases.reduce((acc, c) => acc + (c.tasks || []).filter(isMyPending).length, 0);
         return generalCount + casesCount;
     }, [allCases, generalTasks, currentUser]);
 
@@ -765,8 +813,9 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
         const assignees = selectedAssignees.length > 0 ? selectedAssignees : (currentUser ? [currentUser.id] : undefined);
 
         if (mode === 'notes') {
-            if (selectedTargetCaseId && onAddNote) {
-                onAddNote(selectedTargetCaseId, newItemText.trim(), selectedColor, assignees);
+            if (onAddNote) {
+                const targetCaseId = selectedTargetCaseId || null;
+                onAddNote(targetCaseId, newItemText.trim(), selectedColor, assignees);
                 setNewItemText('');
             }
         } else {
@@ -788,7 +837,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
         panelIcon = <IoListOutline className="text-xl text-teal-600" />;
         totalBadgeCount = singleModeTasks.filter(t => !t.completed).length;
     } else if (mode === 'notes') {
-        panelTitle = 'Notas Adhesivas de Casos';
+        panelTitle = 'Notas Adhesivas (Casos y Generales)';
         panelIcon = <IoDocumentTextOutline className="text-xl text-amber-500" />;
         totalBadgeCount = totalNotesCount;
     }
@@ -825,7 +874,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                     </div>
 
                     {/* SEARCH & FILTER CONTROLS */}
-                    <div className="mt-3.5 space-y-2">
+                    <div className="mt-3.5 space-y-2.5">
                         <div className="relative">
                             <IoSearchOutline className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
                             <input
@@ -845,63 +894,132 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                             )}
                         </div>
 
-                        {/* FILTER TABS */}
-                        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-xs">
-                            <button
-                                onClick={() => setFilterTab('all')}
-                                className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
-                                    filterTab === 'all'
-                                        ? 'bg-teal-600 text-white font-semibold shadow-2xs'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                }`}
-                            >
-                                Todas
-                            </button>
-                            <button
-                                onClick={() => setFilterTab('assigned_to_me')}
-                                className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
-                                    filterTab === 'assigned_to_me'
-                                        ? 'bg-teal-600 text-white font-semibold shadow-2xs'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                }`}
-                            >
-                                Para mí
-                            </button>
-                            <button
-                                onClick={() => setFilterTab('created_by_me')}
-                                className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
-                                    filterTab === 'created_by_me'
-                                        ? 'bg-teal-600 text-white font-semibold shadow-2xs'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                }`}
-                            >
-                                Creadas por mí
-                            </button>
-                            {mode !== 'notes' && (
-                                <>
+                        {/* FILTER CONTROLS (NO HORIZONTAL SCROLL) */}
+                        {mode !== 'notes' ? (
+                            <div className="space-y-2">
+                                {/* Segmented Status Control */}
+                                <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-lg border border-slate-200 text-xs font-semibold">
                                     <button
-                                        onClick={() => setFilterTab('pending')}
-                                        className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
-                                            filterTab === 'pending'
-                                                ? 'bg-teal-600 text-white font-semibold shadow-2xs'
-                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        type="button"
+                                        onClick={() => setStatusFilter('pending')}
+                                        className={`py-1.5 px-2 rounded-md transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
+                                            statusFilter === 'pending'
+                                                ? 'bg-teal-600 text-white shadow-xs font-bold'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                                         }`}
                                     >
-                                        Pendientes
+                                        <span>Pendientes</span>
                                     </button>
                                     <button
-                                        onClick={() => setFilterTab('completed')}
-                                        className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
-                                            filterTab === 'completed'
-                                                ? 'bg-teal-600 text-white font-semibold shadow-2xs'
-                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        type="button"
+                                        onClick={() => setStatusFilter('completed')}
+                                        className={`py-1.5 px-2 rounded-md transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
+                                            statusFilter === 'completed'
+                                                ? 'bg-teal-600 text-white shadow-xs font-bold'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                                         }`}
                                     >
-                                        Completadas
+                                        <span>Completadas</span>
                                     </button>
-                                </>
-                            )}
-                        </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStatusFilter('all')}
+                                        className={`py-1.5 px-2 rounded-md transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
+                                            statusFilter === 'all'
+                                                ? 'bg-teal-600 text-white shadow-xs font-bold'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                                        }`}
+                                    >
+                                        <span>Todas</span>
+                                    </button>
+                                </div>
+
+                                {/* Assignee Filter Pills */}
+                                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAssigneeFilter('all')}
+                                        className={`px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
+                                            assigneeFilter === 'all'
+                                                ? 'bg-slate-800 text-white font-semibold shadow-2xs'
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200/80'
+                                        }`}
+                                    >
+                                        Todas
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAssigneeFilter('assigned_to_me')}
+                                        className={`px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
+                                            assigneeFilter === 'assigned_to_me'
+                                                ? 'bg-teal-700 text-white font-semibold shadow-2xs'
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200/80'
+                                        }`}
+                                    >
+                                        Para mí
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAssigneeFilter('assigned_to_others')}
+                                        className={`px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
+                                            assigneeFilter === 'assigned_to_others'
+                                                ? 'bg-amber-600 text-white font-semibold shadow-2xs'
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200/80'
+                                        }`}
+                                    >
+                                        Asignadas a otros
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAssigneeFilter('created_by_me')}
+                                        className={`px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
+                                            assigneeFilter === 'created_by_me'
+                                                ? 'bg-indigo-600 text-white font-semibold shadow-2xs'
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200/80'
+                                        }`}
+                                    >
+                                        Creadas por mí
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            /* Notes Filter */
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                                <button
+                                    type="button"
+                                    onClick={() => setAssigneeFilter('all')}
+                                    className={`px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                                        assigneeFilter === 'all'
+                                            ? 'bg-amber-600 text-white font-semibold shadow-2xs'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
+                                    }`}
+                                >
+                                    Todas las notas
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setAssigneeFilter('assigned_to_me')}
+                                    className={`px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                                        assigneeFilter === 'assigned_to_me'
+                                            ? 'bg-amber-600 text-white font-semibold shadow-2xs'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
+                                    }`}
+                                >
+                                    Mis notas (Para mí)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setAssigneeFilter('created_by_me')}
+                                    className={`px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                                        assigneeFilter === 'created_by_me'
+                                            ? 'bg-amber-600 text-white font-semibold shadow-2xs'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
+                                    }`}
+                                >
+                                    Creadas por mí
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
                 
@@ -911,52 +1029,82 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                     {/* NOTES MODE */}
                     {mode === 'notes' && (
                         <>
-                            {notesByCase.length === 0 ? (
+                            {/* General notes section */}
+                            {visibleGeneralNotes.length > 0 && (
+                                <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                                    <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100">
+                                        <div className="min-w-0 flex items-center gap-1.5">
+                                            <span className="font-bold text-slate-800 text-sm">📌 Notas Generales (Sin Caso)</span>
+                                            <span className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-full font-semibold">
+                                                {visibleGeneralNotes.length}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2.5">
+                                        {visibleGeneralNotes.map(note => (
+                                            <NoteItem 
+                                                key={note.id}
+                                                note={note}
+                                                caseId={null}
+                                                onUpdate={(updated, targetCaseId) => handleNoteUpdate(null, targetCaseId ?? null, updated)}
+                                                onDelete={() => onDeleteNote && onDeleteNote(null, note.id)}
+                                                professionals={professionals}
+                                                currentUser={currentUser}
+                                                caseName="General / Sin Caso"
+                                                allCases={allCases}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Case-associated notes */}
+                            {notesByCase.map(({ caseItem, notes }) => (
+                                <div key={caseItem.id} className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                                    <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100">
+                                        <div className="min-w-0">
+                                            <h4 className="font-bold text-slate-800 text-sm truncate">{caseItem.name}</h4>
+                                            {caseItem.nickname && (
+                                                <span className="text-xs text-slate-500">({caseItem.nickname})</span>
+                                            )}
+                                        </div>
+                                        <button 
+                                            onClick={() => { onSelectCaseById(caseItem.id, 'myNotes'); onClose(); }} 
+                                            className="text-xs font-semibold flex items-center gap-1 text-teal-700 hover:text-teal-900 bg-teal-50 px-2 py-1 rounded hover:bg-teal-100 transition-colors flex-shrink-0"
+                                            title="Abrir este caso en la pestaña de notas"
+                                        >
+                                            Ir al caso <IoChevronForwardCircleOutline />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2.5">
+                                        {notes.map(note => (
+                                            <NoteItem 
+                                                key={note.id}
+                                                note={note}
+                                                caseId={caseItem.id}
+                                                onUpdate={(updated, targetCaseId) => handleNoteUpdate(caseItem.id, targetCaseId || caseItem.id, updated)}
+                                                onDelete={() => onDeleteNote && onDeleteNote(caseItem.id, note.id)}
+                                                professionals={professionals}
+                                                currentUser={currentUser}
+                                                caseName={caseItem.name}
+                                                onSelectCase={() => { onSelectCaseById(caseItem.id, 'myNotes'); onClose(); }}
+                                                allCases={allCases}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+
+                            {visibleGeneralNotes.length === 0 && notesByCase.length === 0 && (
                                 <div className="text-center text-slate-500 py-12 px-4 bg-white rounded-xl border border-dashed border-slate-200">
                                     <IoDocumentTextOutline className="text-4xl text-slate-300 mx-auto mb-2" />
                                     <p className="text-sm font-semibold text-slate-700">No hay notas que mostrar</p>
                                     <p className="text-xs text-slate-400 mt-1">
-                                        {searchQuery || filterTab !== 'all'
+                                        {searchQuery || assigneeFilter !== 'all'
                                             ? 'Prueba a cambiar los filtros de búsqueda.'
-                                            : 'Escribe una nueva nota abajo seleccionando el caso y los destinatarios.'}
+                                            : 'Escribe una nueva nota abajo seleccionando el caso o general y los destinatarios.'}
                                     </p>
                                 </div>
-                            ) : (
-                                notesByCase.map(({ caseItem, notes }) => (
-                                    <div key={caseItem.id} className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-                                        <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100">
-                                            <div className="min-w-0">
-                                                <h4 className="font-bold text-slate-800 text-sm truncate">{caseItem.name}</h4>
-                                                {caseItem.nickname && (
-                                                    <span className="text-xs text-slate-500">({caseItem.nickname})</span>
-                                                )}
-                                            </div>
-                                            <button 
-                                                onClick={() => { onSelectCaseById(caseItem.id, 'myNotes'); onClose(); }} 
-                                                className="text-xs font-semibold flex items-center gap-1 text-teal-700 hover:text-teal-900 bg-teal-50 px-2 py-1 rounded hover:bg-teal-100 transition-colors flex-shrink-0"
-                                                title="Abrir este caso en la pestaña de notas"
-                                            >
-                                                Ir al caso <IoChevronForwardCircleOutline />
-                                            </button>
-                                        </div>
-                                        <div className="space-y-2.5">
-                                            {notes.map(note => (
-                                                <NoteItem 
-                                                    key={note.id}
-                                                    note={note}
-                                                    caseId={caseItem.id}
-                                                    onUpdate={(updated, targetCaseId) => handleNoteUpdate(caseItem.id, targetCaseId || caseItem.id, updated)}
-                                                    onDelete={() => onDeleteNote && onDeleteNote(caseItem.id, note.id)}
-                                                    professionals={professionals}
-                                                    currentUser={currentUser}
-                                                    caseName={caseItem.name}
-                                                    onSelectCase={() => { onSelectCaseById(caseItem.id, 'myNotes'); onClose(); }}
-                                                    allCases={allCases}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))
                             )}
                         </>
                     )}
@@ -1086,11 +1234,11 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                         value={selectedTargetCaseId}
                                         onChange={(e) => setSelectedTargetCaseId(e.target.value)}
                                         className="w-full text-xs border border-amber-300/80 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 focus:ring-1 focus:ring-amber-500 focus:outline-none shadow-2xs"
-                                        required
                                     >
+                                        <option value="">📌 General / Sin caso</option>
                                         {allCases.map(c => (
                                             <option key={c.id} value={c.id}>
-                                                {c.name} {c.nickname ? `(${c.nickname})` : ''}
+                                                📁 {c.name} {c.nickname ? `(${c.nickname})` : ''}
                                             </option>
                                         ))}
                                     </select>
@@ -1132,7 +1280,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
                                 />
                                 <button 
                                     type="submit" 
-                                    disabled={!newItemText.trim() || !selectedTargetCaseId}
+                                    disabled={!newItemText.trim()}
                                     className="h-10 bg-teal-600 disabled:opacity-50 text-white px-3.5 rounded-lg hover:bg-teal-700 flex items-center justify-center transition-colors flex-shrink-0 text-sm font-semibold gap-1.5 shadow-2xs" 
                                     title="Añadir Nota"
                                 >

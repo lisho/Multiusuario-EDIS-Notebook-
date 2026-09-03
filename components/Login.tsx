@@ -21,6 +21,13 @@ const Login: React.FC<LoginProps> = ({ professionals, onLogin, authError }) => {
     }, [professionals]);
 
     useEffect(() => {
+        if (!selectedUserId && systemUsers.length > 0) {
+            const lishoUser = systemUsers.find(u => u.name.toLowerCase().includes('lisho'));
+            setSelectedUserId(lishoUser ? lishoUser.id : systemUsers[0].id);
+        }
+    }, [systemUsers, selectedUserId]);
+
+    useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setIsDropdownOpen(false);

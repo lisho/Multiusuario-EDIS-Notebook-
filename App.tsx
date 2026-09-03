@@ -87,6 +87,7 @@ const App: React.FC = () => {
     const [professionals, setProfessionals] = useState<Professional[]>([]);
     const [generalInterventions, setGeneralInterventions] = useState<Intervention[]>([]);
     const [generalTasks, setGeneralTasks] = useState<Task[]>([]);
+    const [generalNotes, setGeneralNotes] = useState<MyNote[]>([]);
     const [currentView, setCurrentView] = useState<'cases' | 'admin' | 'calendar' | 'stats' | 'allNotes'>('cases');
     const [selectedCase, setSelectedCase] = useState<Case | null>(null);
     const [initialDashboardView, setInitialDashboardView] = useState<DashboardView>('profile');
@@ -196,7 +197,6 @@ const App: React.FC = () => {
                 const casesList = casesSnapshot.docs.map(doc => {
                     const caseData = { id: doc.id, ...doc.data() } as Case;
                     if (lishoId) {
-                        caseData.createdBy = caseData.createdBy || lishoId;
                         caseData.interventions = caseData.interventions.map(i => ({...i, createdBy: i.createdBy || lishoId}));
                         caseData.tasks = caseData.tasks.map(t => {
                             const migratedTask = {...t, createdBy: t.createdBy || lishoId};
@@ -260,6 +260,14 @@ const App: React.FC = () => {
                     createdBy: doc.data().createdBy || lishoId,
                 })) as Task[];
                 if (isMounted) setGeneralTasks(generalTasksList);
+
+                const generalNotesSnapshot = await getDocs(collection(db, "generalNotes"));
+                const generalNotesList = generalNotesSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    createdBy: doc.data().createdBy || lishoId,
+                })) as MyNote[];
+                if (isMounted) setGeneralNotes(generalNotesList);
 
             } catch (error: any) {
                 console.error("Error fetching data from Firestore: ", error);
@@ -327,6 +335,17 @@ const App: React.FC = () => {
             return isAssigned || isCreator || isLegacy;
         });
     }, [generalTasks, currentUser]);
+
+    const currentUserGeneralNotes = useMemo(() => {
+        if (!currentUser) return [];
+        if (currentUser.role === 'admin') return generalNotes;
+        return generalNotes.filter(note => {
+            const isAssigned = note.assignedTo?.includes(currentUser.id);
+            const isCreator = note.createdBy === currentUser.id;
+            const isLegacy = (!note.assignedTo || note.assignedTo.length === 0) && isCreator;
+            return isAssigned || isCreator || isLegacy;
+        });
+    }, [generalNotes, currentUser]);
 
     const handleSetView = (view: 'cases' | 'admin' | 'calendar' | 'stats' | 'allNotes') => {
         setSelectedCase(null);
@@ -582,30 +601,47 @@ const App: React.FC = () => {
         }
     };
 
-    const handleDeleteNote = (caseId: string, noteId: string) => {
-        const targetCase = cases.find(c => c.id === caseId);
-        if (!targetCase) return;
+    const handleDeleteNote = (caseId: string | null, noteId: string) => {
         requestConfirmation(
             'Eliminar Nota',
             '¿Estás seguro de que quieres eliminar esta nota? Esta acción no se puede deshacer.',
             async () => {
-                const updatedNotes = (targetCase.myNotes || []).filter(n => n.id !== noteId);
-                await handleUpdateCase({ ...targetCase, myNotes: updatedNotes });
+                if (caseId) {
+                    const targetCase = cases.find(c => c.id === caseId);
+                    if (!targetCase) return;
+                    const updatedNotes = (targetCase.myNotes || []).filter(n => n.id !== noteId);
+                    await handleUpdateCase({ ...targetCase, myNotes: updatedNotes });
+                } else {
+                    try {
+                        await deleteDoc(doc(db, "generalNotes", noteId));
+                        setGeneralNotes(prev => prev.filter(n => n.id !== noteId));
+                    } catch (error) {
+                        console.error("Error deleting general note:", error);
+                    }
+                }
             }
         );
     };
 
-    const handleUpdateNote = async (caseId: string, updatedNote: MyNote) => {
-        const targetCase = cases.find(c => c.id === caseId);
-        if (!targetCase) return;
-        const updatedNotes = (targetCase.myNotes || []).map(n => n.id === updatedNote.id ? updatedNote : n);
-        await handleUpdateCase({ ...targetCase, myNotes: updatedNotes });
+    const handleUpdateNote = async (caseId: string | null, updatedNote: MyNote) => {
+        if (caseId) {
+            const targetCase = cases.find(c => c.id === caseId);
+            if (!targetCase) return;
+            const updatedNotes = (targetCase.myNotes || []).map(n => n.id === updatedNote.id ? updatedNote : n);
+            await handleUpdateCase({ ...targetCase, myNotes: updatedNotes });
+        } else {
+            const noteRef = doc(db, "generalNotes", updatedNote.id);
+            try {
+                await setDoc(noteRef, updatedNote, { merge: true });
+                setGeneralNotes(prev => prev.map(n => n.id === updatedNote.id ? updatedNote : n));
+            } catch (error) {
+                console.error("Error updating general note:", error);
+            }
+        }
     };
 
-    const handleAddNoteToCase = async (caseId: string, content: string, color?: string, assignedTo?: string[]) => {
+    const handleAddNoteToCase = async (caseId: string | null, content: string, color?: string, assignedTo?: string[]) => {
         if (!currentUser) return;
-        const targetCase = cases.find(c => c.id === caseId);
-        if (!targetCase) return;
         const newNote: MyNote = {
             id: `note-${Date.now()}`,
             content,
@@ -614,8 +650,21 @@ const App: React.FC = () => {
             createdBy: currentUser.id,
             assignedTo: assignedTo && assignedTo.length > 0 ? assignedTo : [currentUser.id]
         };
-        const currentNotes = targetCase.myNotes || [];
-        await handleUpdateCase({ ...targetCase, myNotes: [newNote, ...currentNotes] });
+
+        if (caseId) {
+            const targetCase = cases.find(c => c.id === caseId);
+            if (!targetCase) return;
+            const currentNotes = targetCase.myNotes || [];
+            await handleUpdateCase({ ...targetCase, myNotes: [newNote, ...currentNotes] });
+        } else {
+            try {
+                const docRef = doc(db, "generalNotes", newNote.id);
+                await setDoc(docRef, newNote);
+                setGeneralNotes(prev => [newNote, ...prev]);
+            } catch (error) {
+                console.error("Error adding general note:", error);
+            }
+        }
     };
 
     // Unified Note/Task Handling
@@ -655,20 +704,39 @@ const App: React.FC = () => {
                     }
                 }
             } else {
-                // General Task
-                const newTask: Task = {
-                    id: newId,
-                    text: data.content,
-                    completed: data.isCompleted || false,
-                    createdBy: currentUser.id,
-                    assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : [currentUser.id]
-                };
-                try {
-                    const docRef = doc(db, "generalTasks", newTask.id);
-                    await setDoc(docRef, newTask);
-                    setGeneralTasks(prevTasks => [...prevTasks, newTask]);
-                } catch (error) {
-                    console.error("Error adding general task from unified view:", error);
+                if (type === 'note') {
+                    // General Note
+                    const newNote: MyNote = {
+                        id: newId,
+                        content: data.content,
+                        color: data.color || 'yellow',
+                        createdAt: new Date().toISOString(),
+                        createdBy: currentUser.id,
+                        assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : [currentUser.id]
+                    };
+                    try {
+                        const docRef = doc(db, "generalNotes", newNote.id);
+                        await setDoc(docRef, newNote);
+                        setGeneralNotes(prev => [newNote, ...prev]);
+                    } catch (error) {
+                        console.error("Error adding general note from unified view:", error);
+                    }
+                } else {
+                    // General Task
+                    const newTask: Task = {
+                        id: newId,
+                        text: data.content,
+                        completed: data.isCompleted || false,
+                        createdBy: currentUser.id,
+                        assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : [currentUser.id]
+                    };
+                    try {
+                        const docRef = doc(db, "generalTasks", newTask.id);
+                        await setDoc(docRef, newTask);
+                        setGeneralTasks(prevTasks => [...prevTasks, newTask]);
+                    } catch (error) {
+                        console.error("Error adding general task from unified view:", error);
+                    }
                 }
             }
             return;
@@ -685,8 +753,11 @@ const App: React.FC = () => {
             item: any;
         } | null = null;
 
+        const genNote = generalNotes.find(n => n.id === itemId);
         const genTask = generalTasks.find(t => t.id === itemId);
-        if (genTask) {
+        if (genNote) {
+            prevLoc = { isGeneral: true, itemType: 'note', item: genNote };
+        } else if (genTask) {
             prevLoc = { isGeneral: true, itemType: 'task', item: genTask };
         } else {
             for (const c of cases) {
@@ -777,21 +848,63 @@ const App: React.FC = () => {
             return;
         }
 
-        // Scenario B: Same General update
+        // Scenario B: Same General update (within General)
         if (prevLoc && prevLoc.isGeneral && !targetCaseId) {
-            const taskRef = doc(db, "generalTasks", itemId);
-            const updatedGeneralTask: Task = {
-                id: itemId,
-                text: data.content,
-                completed: data.isCompleted !== undefined ? data.isCompleted : (prevLoc.item.completed || false),
-                createdBy: prevLoc.item.createdBy || currentUser.id,
-                assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : prevLoc.item.assignedTo
-            };
-            try {
-                await setDoc(taskRef, updatedGeneralTask, { merge: true });
-                setGeneralTasks(prev => prev.map(t => t.id === itemId ? updatedGeneralTask : t));
-            } catch (error) {
-                console.error("Error updating general task:", error);
+            if (type === 'note') {
+                if (prevLoc.itemType === 'task') {
+                    // Was a general task, convert to general note
+                    await deleteDoc(doc(db, "generalTasks", itemId));
+                    setGeneralTasks(prev => prev.filter(t => t.id !== itemId));
+                    const newGenNote: MyNote = {
+                        id: itemId,
+                        content: data.content,
+                        color: data.color || 'yellow',
+                        createdAt: new Date().toISOString(),
+                        createdBy: prevLoc.item.createdBy || currentUser.id,
+                        assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : prevLoc.item.assignedTo
+                    };
+                    await setDoc(doc(db, "generalNotes", itemId), newGenNote);
+                    setGeneralNotes(prev => [newGenNote, ...prev.filter(n => n.id !== itemId)]);
+                } else {
+                    // Update general note
+                    const noteRef = doc(db, "generalNotes", itemId);
+                    const updatedGeneralNote: MyNote = {
+                        ...prevLoc.item,
+                        id: itemId,
+                        content: data.content,
+                        color: data.color || prevLoc.item.color || 'yellow',
+                        assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : prevLoc.item.assignedTo
+                    };
+                    await setDoc(noteRef, updatedGeneralNote, { merge: true });
+                    setGeneralNotes(prev => prev.map(n => n.id === itemId ? updatedGeneralNote : n));
+                }
+            } else {
+                if (prevLoc.itemType === 'note') {
+                    // Was a general note, convert to general task
+                    await deleteDoc(doc(db, "generalNotes", itemId));
+                    setGeneralNotes(prev => prev.filter(n => n.id !== itemId));
+                    const newGenTask: Task = {
+                        id: itemId,
+                        text: data.content,
+                        completed: data.isCompleted || false,
+                        createdBy: prevLoc.item.createdBy || currentUser.id,
+                        assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : prevLoc.item.assignedTo
+                    };
+                    await setDoc(doc(db, "generalTasks", itemId), newGenTask);
+                    setGeneralTasks(prev => [...prev.filter(t => t.id !== itemId), newGenTask]);
+                } else {
+                    // Update general task
+                    const taskRef = doc(db, "generalTasks", itemId);
+                    const updatedGeneralTask: Task = {
+                        id: itemId,
+                        text: data.content,
+                        completed: data.isCompleted !== undefined ? data.isCompleted : (prevLoc.item.completed || false),
+                        createdBy: prevLoc.item.createdBy || currentUser.id,
+                        assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : prevLoc.item.assignedTo
+                    };
+                    await setDoc(taskRef, updatedGeneralTask, { merge: true });
+                    setGeneralTasks(prev => prev.map(t => t.id === itemId ? updatedGeneralTask : t));
+                }
             }
             return;
         }
@@ -800,8 +913,13 @@ const App: React.FC = () => {
         // 1. Remove from source
         if (prevLoc) {
             if (prevLoc.isGeneral) {
-                await deleteDoc(doc(db, "generalTasks", itemId));
-                setGeneralTasks(prev => prev.filter(t => t.id !== itemId));
+                if (prevLoc.itemType === 'note') {
+                    await deleteDoc(doc(db, "generalNotes", itemId));
+                    setGeneralNotes(prev => prev.filter(n => n.id !== itemId));
+                } else {
+                    await deleteDoc(doc(db, "generalTasks", itemId));
+                    setGeneralTasks(prev => prev.filter(t => t.id !== itemId));
+                }
             } else if (prevLoc.caseId) {
                 const prevCase = cases.find(c => c.id === prevLoc.caseId);
                 if (prevCase) {
@@ -841,19 +959,37 @@ const App: React.FC = () => {
             }
         } else {
             // Target is general
-            const newGeneralTask: Task = {
-                id: itemId,
-                text: data.content,
-                completed: data.isCompleted !== undefined ? data.isCompleted : (prevLoc?.item?.completed || false),
-                createdBy: prevLoc?.item?.createdBy || currentUser.id,
-                assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : (prevLoc?.item?.assignedTo || [currentUser.id])
-            };
-            try {
-                const docRef = doc(db, "generalTasks", itemId);
-                await setDoc(docRef, newGeneralTask);
-                setGeneralTasks(prev => [...prev.filter(t => t.id !== itemId), newGeneralTask]);
-            } catch (error) {
-                console.error("Error moving task to general:", error);
+            if (type === 'note') {
+                const newGeneralNote: MyNote = {
+                    id: itemId,
+                    content: data.content,
+                    color: data.color || 'yellow',
+                    createdAt: new Date().toISOString(),
+                    createdBy: prevLoc?.item?.createdBy || currentUser.id,
+                    assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : (prevLoc?.item?.assignedTo || [currentUser.id])
+                };
+                try {
+                    const docRef = doc(db, "generalNotes", itemId);
+                    await setDoc(docRef, newGeneralNote);
+                    setGeneralNotes(prev => [newGeneralNote, ...prev.filter(n => n.id !== itemId)]);
+                } catch (error) {
+                    console.error("Error moving note to general:", error);
+                }
+            } else {
+                const newGeneralTask: Task = {
+                    id: itemId,
+                    text: data.content,
+                    completed: data.isCompleted !== undefined ? data.isCompleted : (prevLoc?.item?.completed || false),
+                    createdBy: prevLoc?.item?.createdBy || currentUser.id,
+                    assignedTo: data.assignedTo && data.assignedTo.length > 0 ? data.assignedTo : (prevLoc?.item?.assignedTo || [currentUser.id])
+                };
+                try {
+                    const docRef = doc(db, "generalTasks", itemId);
+                    await setDoc(docRef, newGeneralTask);
+                    setGeneralTasks(prev => [...prev.filter(t => t.id !== itemId), newGeneralTask]);
+                } catch (error) {
+                    console.error("Error moving task to general:", error);
+                }
             }
         }
     };
@@ -869,7 +1005,7 @@ const App: React.FC = () => {
         });
     };
 
-    const handleUpdateNoteWithCase = async (originalCaseId: string, targetCaseId: string, updatedNote: MyNote) => {
+    const handleUpdateNoteWithCase = async (originalCaseId: string | null, targetCaseId: string | null, updatedNote: MyNote) => {
         await handleSaveUnifiedNote({
             id: updatedNote.id,
             type: 'note',
@@ -897,12 +1033,20 @@ const App: React.FC = () => {
                         }
                     }
                 } else {
-                    // General Task
-                    try {
-                        await deleteDoc(doc(db, "generalTasks", id));
-                        setGeneralTasks(prev => prev.filter(t => t.id !== id));
-                    } catch (error) {
-                         console.error("Error deleting general task:", error);
+                    if (type === 'note') {
+                        try {
+                            await deleteDoc(doc(db, "generalNotes", id));
+                            setGeneralNotes(prev => prev.filter(n => n.id !== id));
+                        } catch (error) {
+                            console.error("Error deleting general note:", error);
+                        }
+                    } else {
+                        try {
+                            await deleteDoc(doc(db, "generalTasks", id));
+                            setGeneralTasks(prev => prev.filter(t => t.id !== id));
+                        } catch (error) {
+                            console.error("Error deleting general task:", error);
+                        }
                     }
                 }
             }
@@ -1616,6 +1760,7 @@ const App: React.FC = () => {
                 return <AllNotesView
                             cases={visibleCases}
                             generalTasks={currentUserGeneralTasks}
+                            generalNotes={currentUserGeneralNotes}
                             currentUser={currentUser}
                             onBack={() => setCurrentView('cases')}
                             onSaveItem={handleSaveUnifiedNote}
@@ -1728,6 +1873,7 @@ const App: React.FC = () => {
                                     professionals={professionals}
                                     generalInterventions={generalInterventions}
                                     generalTasks={currentUserGeneralTasks}
+                                    generalNotes={currentUserGeneralNotes}
                                     onSelectCaseById={handleSelectCaseById} 
                                     onSetStatusFilter={setStatusFilter}
                                     onOpenAllTasks={() => setTasksPanelState({ mode: 'all' })}
@@ -1737,6 +1883,8 @@ const App: React.FC = () => {
                                     requestConfirmation={requestConfirmation}
                                     currentUser={currentUser}
                                     onOpenAllNotes={() => setCurrentView('allNotes')}
+                                    onToggleTask={handleToggleTask}
+                                    onToggleGeneralTask={handleToggleGeneralTask}
                                 />
                             </div>
                         )}
@@ -1927,6 +2075,7 @@ const App: React.FC = () => {
                 caseData={tasksPanelState.caseData}
                 allCases={visibleCases}
                 generalTasks={currentUserGeneralTasks}
+                generalNotes={currentUserGeneralNotes}
                 professionals={professionals}
                 onClose={() => setTasksPanelState({ mode: 'closed' })}
                 onAddTask={handleAddTask}

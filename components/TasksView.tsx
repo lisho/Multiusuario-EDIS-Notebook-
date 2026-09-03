@@ -164,7 +164,25 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
         });
     }, [tasks, currentUser]);
 
-    const pendingTasks = visibleTasks.filter(t => !t.completed);
+    const isAssignedToMe = (t: Task) => {
+        if (!currentUser) return true;
+        if (t.assignedTo && t.assignedTo.length > 0) {
+            return t.assignedTo.includes(currentUser.id);
+        }
+        return t.createdBy === currentUser.id;
+    };
+
+    const isDelegatedByMe = (t: Task) => {
+        if (!currentUser) return false;
+        return t.createdBy === currentUser.id && 
+               !!t.assignedTo && 
+               t.assignedTo.length > 0 && 
+               !t.assignedTo.includes(currentUser.id);
+    };
+
+    const myPendingTasks = visibleTasks.filter(t => !t.completed && isAssignedToMe(t));
+    const delegatedPendingTasks = visibleTasks.filter(t => !t.completed && isDelegatedByMe(t));
+    const otherPendingTasks = visibleTasks.filter(t => !t.completed && !isAssignedToMe(t) && !isDelegatedByMe(t));
     const completedTasks = visibleTasks.filter(t => t.completed);
 
     return (
@@ -179,7 +197,7 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
                             placeholder="Añadir una nueva tarea..."
                             className="flex-grow px-4 py-2 text-base border rounded-lg focus:outline-none focus:ring-2 bg-slate-100 text-slate-900 border-slate-300 focus:ring-teal-500"
                         />
-                        <button type="submit" className="bg-teal-600 text-white w-10 h-10 rounded-lg hover:bg-teal-700 flex items-center justify-center transition-colors flex-shrink-0" title="Añadir Tarea">
+                        <button type="submit" className="bg-teal-600 text-white w-10 h-10 rounded-lg hover:bg-teal-700 flex items-center justify-center transition-colors flex-shrink-0 cursor-pointer" title="Añadir Tarea">
                             <IoAddOutline className="text-2xl" />
                         </button>
                     </div>
@@ -195,7 +213,7 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
                                     <button
                                         type="button"
                                         onClick={handleSelectOnlyMe}
-                                        className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${
+                                        className={`text-[11px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
                                             isOnlyMeSelected
                                                 ? 'bg-teal-100 text-teal-800 border-teal-300 font-semibold'
                                                 : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
@@ -208,7 +226,7 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
                                     <button
                                         type="button"
                                         onClick={handleSelectAllTeam}
-                                        className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${
+                                        className={`text-[11px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
                                             isAllTeamSelected
                                                 ? 'bg-indigo-100 text-indigo-800 border-indigo-300 font-semibold'
                                                 : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
@@ -229,7 +247,7 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
                                         key={p.id}
                                         type="button"
                                         onClick={() => handleAssigneeToggle(p.id)}
-                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs transition-all border ${
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs transition-all border cursor-pointer ${
                                             isSelected
                                                 ? 'bg-teal-50 border-teal-500 text-teal-900 font-medium shadow-2xs ring-1 ring-teal-400'
                                                 : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
@@ -254,27 +272,100 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
                 </form>
             </div>
             
-            <div className="space-y-4">
+            <div className="space-y-5">
+                {/* Mis Tareas Pendientes */}
                 <div>
-                    <h3 className="text-lg font-bold text-slate-800 mb-3">Tareas Pendientes ({pendingTasks.length})</h3>
-                    <div className="space-y-2">
-                        {pendingTasks.map(task => (
-                            <TaskItem 
-                                key={task.id} 
-                                task={task} 
-                                onToggle={() => onToggleTask(task.id)} 
-                                onDelete={() => onDeleteTask(task.id)} 
-                                onConvertToEntry={() => onTaskToEntry(task)} 
-                                professionals={edisTechnicians} 
-                                onUpdateTask={onUpdateTask}
-                            />
-                        ))}
+                    <div className="flex items-center justify-between mb-2.5">
+                        <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                            <span>Mis Tareas Pendientes</span>
+                            <span className="px-2 py-0.5 bg-teal-100 text-teal-800 text-xs rounded-full font-bold">
+                                {myPendingTasks.length}
+                            </span>
+                        </h3>
                     </div>
+                    {myPendingTasks.length > 0 ? (
+                        <div className="space-y-2">
+                            {myPendingTasks.map(task => (
+                                <TaskItem 
+                                    key={task.id} 
+                                    task={task} 
+                                    onToggle={() => onToggleTask(task.id)} 
+                                    onDelete={() => onDeleteTask(task.id)} 
+                                    onConvertToEntry={() => onTaskToEntry(task)} 
+                                    professionals={edisTechnicians} 
+                                    onUpdateTask={onUpdateTask}
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded-lg border border-slate-100">
+                            No tienes tareas pendientes asignadas a ti en este caso.
+                        </p>
+                    )}
                 </div>
 
-                {completedTasks.length > 0 && (
+                {/* Tareas Asignadas a Otros Compañeros */}
+                {delegatedPendingTasks.length > 0 && (
+                    <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200/80">
+                        <div className="flex items-center justify-between mb-2.5">
+                            <h3 className="text-sm font-bold text-amber-900 flex items-center gap-2">
+                                <span>Tareas Asignadas a Otros Compañeros (Delegadas)</span>
+                                <span className="px-2 py-0.5 bg-amber-200 text-amber-900 text-xs rounded-full font-bold">
+                                    {delegatedPendingTasks.length}
+                                </span>
+                            </h3>
+                            <span className="text-[11px] text-amber-700 font-medium">Asignadas por ti</span>
+                        </div>
+                        <div className="space-y-2">
+                            {delegatedPendingTasks.map(task => (
+                                <TaskItem 
+                                    key={task.id} 
+                                    task={task} 
+                                    onToggle={() => onToggleTask(task.id)} 
+                                    onDelete={() => onDeleteTask(task.id)} 
+                                    onConvertToEntry={() => onTaskToEntry(task)} 
+                                    professionals={edisTechnicians} 
+                                    onUpdateTask={onUpdateTask}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Otras Tareas del Caso (para Admin o resto del equipo) */}
+                {otherPendingTasks.length > 0 && (
                     <div>
-                        <h3 className="text-lg font-bold text-slate-800 mb-3">Tareas Completadas ({completedTasks.length})</h3>
+                        <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                            <span>Otras Tareas del Equipo en este Caso</span>
+                            <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-xs rounded-full font-bold">
+                                {otherPendingTasks.length}
+                            </span>
+                        </h3>
+                        <div className="space-y-2">
+                            {otherPendingTasks.map(task => (
+                                <TaskItem 
+                                    key={task.id} 
+                                    task={task} 
+                                    onToggle={() => onToggleTask(task.id)} 
+                                    onDelete={() => onDeleteTask(task.id)} 
+                                    onConvertToEntry={() => onTaskToEntry(task)} 
+                                    professionals={edisTechnicians} 
+                                    onUpdateTask={onUpdateTask}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Tareas Completadas */}
+                {completedTasks.length > 0 && (
+                    <div className="pt-2 border-t border-slate-200">
+                        <h3 className="text-sm font-bold text-slate-600 mb-2.5 flex items-center gap-2">
+                            <span>Tareas Completadas</span>
+                            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full font-medium">
+                                {completedTasks.length}
+                            </span>
+                        </h3>
                         <div className="space-y-2">
                             {completedTasks.map(task => (
                                 <TaskItem 
