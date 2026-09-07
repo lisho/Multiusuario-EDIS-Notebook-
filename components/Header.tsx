@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Professional } from '../types';
-import { IoAddOutline, IoChevronDownOutline, IoCreateOutline, IoLogOutOutline, IoAppsOutline, IoConstructOutline, IoCalendarOutline, IoStatsChartOutline } from 'react-icons/io5';
+import { SyncStatus } from '../services/syncService';
+import { IoAddOutline, IoChevronDownOutline, IoCreateOutline, IoLogOutOutline, IoAppsOutline, IoConstructOutline, IoCalendarOutline, IoStatsChartOutline, IoSyncOutline } from 'react-icons/io5';
 
 interface HeaderProps {
     onNewCase: () => void;
@@ -13,11 +14,26 @@ interface HeaderProps {
     currentUser: Professional | null;
     onLogout: () => void;
     onOpenProfile: () => void;
+    syncStatus?: SyncStatus;
+    lastSyncedAt?: Date | null;
+    onManualSync?: () => void;
 }
 
 const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
-const Header: React.FC<HeaderProps> = ({ onNewCase, onNewTask, currentView, onSetView, isCaseView, currentUser, onLogout, onOpenProfile }) => {
+const Header: React.FC<HeaderProps> = ({ 
+    onNewCase, 
+    onNewTask, 
+    currentView, 
+    onSetView, 
+    isCaseView, 
+    currentUser, 
+    onLogout, 
+    onOpenProfile,
+    syncStatus = 'connected',
+    lastSyncedAt,
+    onManualSync
+}) => {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -69,6 +85,35 @@ const Header: React.FC<HeaderProps> = ({ onNewCase, onNewTask, currentView, onSe
             </div>
             
             <div className="flex items-center gap-2 sm:gap-4">
+                {/* Real-time sync badge */}
+                <div 
+                    onClick={onManualSync}
+                    title={syncStatus === 'connected' ? `Sincronizado en tiempo real ${lastSyncedAt ? `(${lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})` : ''} - Clic para refrescar` : syncStatus === 'syncing' ? 'Sincronizando cambios...' : syncStatus === 'offline' ? 'Sin conexión (modo offline)' : 'Error de sincronización'}
+                    className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border cursor-pointer transition-colors ${
+                        syncStatus === 'connected'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                            : syncStatus === 'syncing'
+                            ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                            : syncStatus === 'offline'
+                            ? 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                    }`}
+                >
+                    <span className={`w-2 h-2 rounded-full ${
+                        syncStatus === 'connected'
+                            ? 'bg-emerald-500 animate-pulse'
+                            : syncStatus === 'syncing'
+                            ? 'bg-amber-500 animate-spin'
+                            : syncStatus === 'offline'
+                            ? 'bg-slate-400'
+                            : 'bg-rose-500'
+                    }`} />
+                    <span className="text-2xs font-semibold">
+                        {syncStatus === 'connected' ? 'En tiempo real' : syncStatus === 'syncing' ? 'Sincronizando' : syncStatus === 'offline' ? 'Desconectado' : 'Error'}
+                    </span>
+                    <IoSyncOutline className={`text-xs ml-0.5 ${syncStatus === 'syncing' ? 'animate-spin' : 'opacity-60'}`} />
+                </div>
+
                 <button
                     onClick={onNewTask}
                     className="hidden sm:flex items-center gap-2 bg-slate-100 text-slate-700 px-3 py-2 rounded-md hover:bg-slate-200 font-semibold text-sm transition-colors"

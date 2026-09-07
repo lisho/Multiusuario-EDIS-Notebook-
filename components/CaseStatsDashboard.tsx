@@ -170,12 +170,13 @@ const AnimatedItem: React.FC<{ children: React.ReactNode; delay?: number }> = ({
 const AnimatedLi: React.FC<{ children: React.ReactNode; delay?: number; className?: string }> = ({ children, delay = 0, className = "" }) => {
     const [isVisible, setIsVisible] = useState(false);
     useEffect(() => {
+        setIsVisible(false);
         const timer = setTimeout(() => setIsVisible(true), delay);
         return () => clearTimeout(timer);
     }, [delay]);
 
     return (
-        <li className={`${className} transition-all duration-500 ease-out transform ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+        <li className={`${className} transition-all duration-300 ease-out transform ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
             {children}
         </li>
     );
@@ -480,17 +481,31 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
     }, [cases, generalTasks, generalNotes, currentUser]);
     
     const getAgendaForDate = (dateObj: Date) => {
-        const allInterventions = [
-            ...cases.flatMap(c => c.interventions || []),
-            ...generalInterventions
-        ];
+        const uniqueInterventionsMap = new Map<string, Intervention>();
+        cases.forEach(c => {
+            (c.interventions || []).forEach(i => {
+                if (i && i.id) {
+                    uniqueInterventionsMap.set(i.id, i);
+                }
+            });
+        });
+        generalInterventions.forEach(i => {
+            if (i && i.id && !uniqueInterventionsMap.has(i.id)) {
+                uniqueInterventionsMap.set(i.id, i);
+            }
+        });
+        const allInterventions = Array.from(uniqueInterventionsMap.values());
         
         const dateString = dateObj.toDateString();
 
         return allInterventions
             .filter(event => {
+                if (!event || !event.start) return false;
                 const isOnDay = new Date(event.start).toDateString() === dateString;
                 if (!isOnDay) return false;
+
+                if (!currentUser) return true;
+                if (currentUser.role === 'admin') return true;
 
                 // Users see interventions where they are assigned or which they created
                 const isAssigned = Boolean(event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.includes(currentUser.id));
@@ -772,7 +787,7 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                 </button>
                             </div>
                             {displayedAgenda.length > 0 ? (
-                                <ul className="space-y-3">
+                                <ul key={agendaTab} className="space-y-3">
                                     {displayedAgenda.map((event, index) => {
                                         const Icon = interventionIcons[event.interventionType] || IoDocumentTextOutline;
                                         const styleClass = interventionTypeStyles[event.interventionType] || 'text-gray-500';
@@ -784,8 +799,8 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                         
                                         return (
                                             <AnimatedLi 
-                                                key={event.id} 
-                                                delay={index * 100} 
+                                                key={`${agendaTab}-${event.id}`} 
+                                                delay={index * 60} 
                                                 className={`p-3 rounded-lg border flex flex-col gap-3 transition-colors shadow-sm ${event.status === InterventionStatus.Cancelled ? 'bg-slate-50 opacity-70' : 'bg-white'} ${isMenuOpen ? 'relative z-20' : ''}`}
                                             >
                                                 <div className="flex items-start gap-4">

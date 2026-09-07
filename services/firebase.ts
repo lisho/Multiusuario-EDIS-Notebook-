@@ -1,11 +1,16 @@
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore, initializeFirestore, setLogLevel } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+
+// Silenciar warnings benignos de transporte en consola
+try {
+  setLogLevel('error');
+} catch (e) {
+  // ignore if already set
+}
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  // ATENCIÓN: Reemplaza "TU_API_KEY_DE_FIREBASE" con la clave de API real de tu proyecto de Firebase.
-  // Puedes encontrarla en la configuración de tu proyecto en la consola de Firebase.
   apiKey: "AIzaSyAlrdWjSC0GETvt0Ev6kWx8zadahUthU80",
   authDomain: "cuaderno-de-campo-c7f4a.firebaseapp.com",
   projectId: "cuaderno-de-campo-c7f4a",
@@ -15,11 +20,22 @@ const firebaseConfig = {
   measurementId: "G-VELZ20G1GL"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase App safely (singleton)
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Cloud Firestore and get a reference to the service
-export const db = getFirestore(app);
+// Initialize Cloud Firestore safely
+let firestoreInstance;
+try {
+  firestoreInstance = getFirestore(app);
+} catch (e) {
+  try {
+    firestoreInstance = initializeFirestore(app, {});
+  } catch (err) {
+    firestoreInstance = getFirestore(app);
+  }
+}
+
+export const db = firestoreInstance;
 
 // Initialize Firebase Authentication and get a reference to the service
 export const auth = getAuth(app);

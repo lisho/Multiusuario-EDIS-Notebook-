@@ -20,6 +20,7 @@ import AllNotesView from './components/AllNotesView';
 import { UnifiedItemData } from './components/UnifiedNoteModal';
 import { Case, CaseStatus, Task, AdminTool, Intervention, InterventionRecord, Professional, DashboardView, MyNote, User, ProfessionalRole } from './types';
 import { db, auth } from './services/firebase';
+import { setupRealtimeSync, SyncStatus } from './services/syncService';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { collection, query, getDocs, addDoc, doc, updateDoc, deleteDoc, writeBatch, setDoc } from 'firebase/firestore';
 import { IoAddOutline, IoCloseCircleOutline, IoSearchOutline, IoChevronDownOutline, IoWarningOutline, IoCloseOutline } from 'react-icons/io5';
@@ -135,6 +136,14 @@ const App: React.FC = () => {
         setViewingGenogramUrl(null);
     };
 
+    const [syncStatus, setSyncStatus] = useState<SyncStatus>('connected');
+    const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(new Date());
+    const currentUserRef = useRef<User | null>(currentUser);
+
+    useEffect(() => {
+        currentUserRef.current = currentUser;
+    }, [currentUser]);
+
     const handleLogin = (professional: Professional) => {
         if (!professional.isSystemUser || !professional.systemRole) return;
         const user: User = {
@@ -142,170 +151,113 @@ const App: React.FC = () => {
             name: professional.name,
             role: professional.systemRole,
         };
+        currentUserRef.current = user;
         setCurrentUser(user);
         setCases(prevCases => [...prevCases].sort(getCaseSorter(user.id, user.role)));
     };
 
     const handleLogout = () => {
+        currentUserRef.current = null;
         setCurrentUser(null);
     };
 
     useEffect(() => {
         let isMounted = true;
+        let syncCleanup: (() => void) | null = null;
 
-        const fetchData = async () => {
+        const startSync = () => {
             if (!isMounted) return;
             setIsLoading(true);
-            try {
-                const professionalsSnapshot = await getDocs(collection(db, "professionals"));
-                const professionalsList = professionalsSnapshot.docs.map(doc => {
-                    const data = doc.data();
-                    const prof: Professional = { id: doc.id, ...data } as Professional;
-    
-                    // Data migration for existing professionals to add user management fields
-                    if (prof.role === ProfessionalRole.EdisTechnician) {
-                        if (prof.isSystemUser === undefined) {
-                            prof.isSystemUser = true; // All existing technicians could log in
+
+            syncCleanup = setupRealtimeSync({
+                onProfessionalsUpdated: (professionalsList) => {
+                    if (!isMounted) return;
+                    setProfessionals(professionalsList);
+                },
+                onCasesUpdated: (casesList) => {
+                    if (!isMounted) return;
+                    const currentU = currentUserRef.current;
+                    const sorter = getCaseSorter(currentU?.id, currentU?.role);
+                    const sortedCases = [...casesList].sort(sorter);
+                    setCases(sortedCases);
+
+                    // Sincronizar en tiempo real el caso seleccionado actualmente si está abierto
+                    setSelectedCase(prevSelected => {
+                        if (!prevSelected) return null;
+                        const latestVersion = casesList.find(c => c.id === prevSelected.id);
+                        return latestVersion || prevSelected;
+                    });
+
+                    // Sincronizar panel lateral de tareas si está abierto
+                    setTasksPanelState(prev => {
+                        if (prev.mode === 'single' && prev.caseData) {
+                            const latestVersion = casesList.find(c => c.id === prev.caseData!.id);
+                            if (latestVersion) return { ...prev, caseData: latestVersion };
                         }
-                        if (prof.isSystemUser && !prof.systemRole) {
-                            // The previous hardcoded logic is now a one-time migration
-                            prof.systemRole = prof.name === 'Lisho' ? 'admin' : 'tecnico';
-                        }
-                    } else {
-                         if (prof.isSystemUser === undefined) {
-                            prof.isSystemUser = false; // Social workers are not system users by default
-                        }
-                    }
-
-                    // Assign default password to admin if not set
-                    if (prof.systemRole === 'admin' && !prof.password) {
-                        prof.password = 'admin';
-                    }
-                    
-                    return prof;
-                }) as Professional[];
-                if (isMounted) setProfessionals(professionalsList);
-    
-                const lisho = professionalsList.find(p => p.name === 'Lisho');
-                if (!lisho) {
-                    console.warn("User 'Lisho' not found. Cannot migrate old data.");
-                }
-                const lishoId = lisho?.id;
-
-                const casesQuery = query(collection(db, "cases"));
-                const casesSnapshot = await getDocs(casesQuery);
-                const casesList = casesSnapshot.docs.map(doc => {
-                    const caseData = { id: doc.id, ...doc.data() } as Case;
-                    if (lishoId) {
-                        caseData.interventions = caseData.interventions.map(i => ({...i, createdBy: i.createdBy || lishoId}));
-                        caseData.tasks = caseData.tasks.map(t => {
-                            const migratedTask = {...t, createdBy: t.createdBy || lishoId};
-                            // Data migration for tasks: convert assignedTo from string to string[]
-                            if (typeof migratedTask.assignedTo === 'string') {
-                                // @ts-ignore
-                                migratedTask.assignedTo = [migratedTask.assignedTo];
-                            }
-                            return migratedTask;
-                        });
-                        
-                        let processedNotes: MyNote[] = [];
-                        if (Array.isArray(caseData.myNotes)) {
-                            const seenNoteIds = new Set<string>();
-                            processedNotes = caseData.myNotes
-                                .filter(n => {
-                                    if (!n || !n.id) return false;
-                                    if (seenNoteIds.has(n.id)) return false;
-                                    seenNoteIds.add(n.id);
-                                    return true;
-                                })
-                                .map(n => ({ ...n, createdBy: n.createdBy || lishoId }));
-                        } else if (typeof caseData.myNotes === 'string' && (caseData.myNotes as string).trim() !== '') {
-                            // This handles legacy data where myNotes was a single string.
-                            processedNotes = [{
-                                id: `note-${doc.id}-${Date.now()}`,
-                                content: caseData.myNotes as string,
-                                color: 'yellow',
-                                createdAt: new Date().toISOString(),
-                                createdBy: lishoId
-                            }];
-                        }
-                        caseData.myNotes = processedNotes;
-
-                        caseData.interventionRecords = caseData.interventionRecords.map(r => ({...r, createdBy: r.createdBy || lishoId}));
-                    }
-
-                    return caseData;
-                });
-                if (isMounted) {
-                    const sorter = getCaseSorter(currentUser?.id, currentUser?.role);
-                    setCases(casesList.sort(sorter));
-                }
-
-                const toolsSnapshot = await getDocs(collection(db, "adminTools"));
-                const toolsList = toolsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AdminTool[];
-                if (isMounted) setAdminTools(toolsList);
-                
-                const generalInterventionsSnapshot = await getDocs(collection(db, "generalInterventions"));
-                const generalInterventionsList = generalInterventionsSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    createdBy: doc.data().createdBy || lishoId,
-                })) as Intervention[];
-                if (isMounted) setGeneralInterventions(generalInterventionsList);
-                
-                const generalTasksSnapshot = await getDocs(collection(db, "generalTasks"));
-                const generalTasksList = generalTasksSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    createdBy: doc.data().createdBy || lishoId,
-                })) as Task[];
-                if (isMounted) setGeneralTasks(generalTasksList);
-
-                const generalNotesSnapshot = await getDocs(collection(db, "generalNotes"));
-                const generalNotesList = generalNotesSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    createdBy: doc.data().createdBy || lishoId,
-                })) as MyNote[];
-                if (isMounted) setGeneralNotes(generalNotesList);
-
-            } catch (error: any) {
-                console.error("Error fetching data from Firestore: ", error);
-                if (isMounted) {
+                        return prev;
+                    });
+                },
+                onAdminToolsUpdated: (toolsList) => {
+                    if (!isMounted) return;
+                    setAdminTools(toolsList);
+                },
+                onGeneralInterventionsUpdated: (genIntList) => {
+                    if (!isMounted) return;
+                    setGeneralInterventions(genIntList);
+                },
+                onGeneralTasksUpdated: (genTasksList) => {
+                    if (!isMounted) return;
+                    setGeneralTasks(genTasksList);
+                },
+                onGeneralNotesUpdated: (genNotesList) => {
+                    if (!isMounted) return;
+                    setGeneralNotes(genNotesList);
+                },
+                onStatusChange: (status, timestamp) => {
+                    if (!isMounted) return;
+                    setSyncStatus(status);
+                    setLastSyncedAt(timestamp);
+                    setIsLoading(false);
+                },
+                onError: (error: any) => {
+                    if (!isMounted) return;
+                    console.error("Error en sincronización en tiempo real: ", error);
                     if (error.code === 'permission-denied') {
-                        setAuthError("Permisos insuficientes. Asegúrate de que las reglas de seguridad de Firestore permitan lectura/escritura (o que la autenticación anónima esté habilitada y funcionando).");
+                        setAuthError("Permisos insuficientes. Asegúrate de que las reglas de seguridad de Firestore permitan lectura/escritura (o que la autenticación anónima esté habilitada).");
                     } else if (error.code === 'unavailable') {
                         setAuthError("No se pudo conectar al servidor. Es posible que tengas problemas de conexión o que el dispositivo se haya suspendido. Por favor, recarga la aplicación.");
                     } else {
-                        setAuthError(`Hubo un error al cargar los datos (${error.message || 'Error desconocido'}). Por favor, recarga la aplicación.`);
+                        setAuthError(`Hubo un error al cargar los datos (${error.message || 'Error desconocido'}).`);
                     }
+                    setIsLoading(false);
                 }
-            } finally {
-                if (isMounted) setIsLoading(false);
-            }
+            });
         };
 
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
+        const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
             if (user) {
-                fetchData();
+                startSync();
             } else {
                 signInAnonymously(auth).catch(error => {
                     console.error("Firebase Anonymous sign-in failed:", error);
-                     if (isMounted) {
+                    if (isMounted) {
                         if (error.code === 'auth/configuration-not-found') {
-                            setAuthError('Autenticación anónima deshabilitada. Ve a Firebase Console > Authentication > Sign-in method y habilita "Anónimo". Sin esto, la subida de imágenes y otras funciones fallarán.');
+                            setAuthError('Autenticación anónima deshabilitada. Ve a Firebase Console > Authentication > Sign-in method y habilita "Anónimo".');
                         } else {
                             setAuthError(`Error de autenticación de Firebase: ${error.message}`);
                         }
                         setIsLoading(false);
-                     }
+                    }
                 });
             }
         });
 
         return () => {
             isMounted = false;
-            unsubscribe();
+            unsubscribeAuth();
+            if (syncCleanup) {
+                syncCleanup();
+            }
         };
     }, []);
 
@@ -1923,13 +1875,15 @@ const App: React.FC = () => {
                                         {pinnedCases.length > 0 && (
                                             <div className="mb-12">
                                                 <AnimatedSection delay={0}>
-                                                    <h2 className="text-2xl font-bold text-slate-700 mb-6 pb-4 border-b border-slate-200 flex items-center gap-2"><BsPinAngleFill className="text-teal-600"/> Casos Fijados</h2>
+                                                    <h2 className="text-2xl font-bold text-slate-700 mb-6 pb-4 border-b border-slate-200 flex items-center gap-2"><BsPinAngleFill className="text-teal-600"/> Mis casos fijados</h2>
                                                 </AnimatedSection>
                                                 {renderCaseList(pinnedCases)}
                                             </div>
                                         )}
                                         <AnimatedSection delay={100}>
-                                            <h2 className="text-2xl font-bold text-slate-700 mb-6 pb-4 border-b border-slate-200">Mis Casos</h2>
+                                            <h2 className="text-2xl font-bold text-slate-700 mb-6 pb-4 border-b border-slate-200">
+                                                {pinnedCases.length > 0 ? 'Mis otros casos' : 'Mis casos'}
+                                            </h2>
                                         </AnimatedSection>
                                         {unpinnedCases.length > 0 ? (
                                             renderCaseList(unpinnedCases)
@@ -2055,6 +2009,15 @@ const App: React.FC = () => {
                 currentUser={currentUserProfessional}
                 onLogout={handleLogout}
                 onOpenProfile={() => setIsProfileModalOpen(true)}
+                syncStatus={syncStatus}
+                lastSyncedAt={lastSyncedAt}
+                onManualSync={() => {
+                    setSyncStatus('syncing');
+                    setTimeout(() => {
+                        setSyncStatus('connected');
+                        setLastSyncedAt(new Date());
+                    }, 400);
+                }}
             />
              {authError && (
                 <div 
