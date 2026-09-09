@@ -106,8 +106,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const [editingIntervention, setEditingIntervention] = useState<Intervention | null>(null);
 
   const allInterventions = useMemo(() => {
-    const caseInterventions = cases.flatMap(c => c.interventions);
-    return [...caseInterventions, ...generalInterventions];
+    const uniqueMap = new Map<string, Intervention>();
+    cases.forEach(c => {
+      (c.interventions || []).forEach(i => {
+        if (i && i.id) uniqueMap.set(i.id, i);
+      });
+    });
+    (generalInterventions || []).forEach(i => {
+      if (i && i.id && !uniqueMap.has(i.id)) uniqueMap.set(i.id, i);
+    });
+    return Array.from(uniqueMap.values());
   }, [cases, generalInterventions]);
 
   const categorizedTools = useMemo(() => {

@@ -582,10 +582,16 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
     };
 
     const expiredActions = useMemo(() => {
-        const allInterventions = [
-            ...cases.flatMap(c => c.interventions || []),
-            ...generalInterventions
-        ];
+        const uniqueMap = new Map<string, Intervention>();
+        cases.forEach(c => {
+            (c.interventions || []).forEach(i => {
+                if (i && i.id) uniqueMap.set(i.id, i);
+            });
+        });
+        (generalInterventions || []).forEach(i => {
+            if (i && i.id && !uniqueMap.has(i.id)) uniqueMap.set(i.id, i);
+        });
+        const allInterventions = Array.from(uniqueMap.values());
         const twentyFiveHoursAgo = new Date().getTime() - (25 * 60 * 60 * 1000);
 
         return allInterventions.filter(event =>

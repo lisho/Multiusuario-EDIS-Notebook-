@@ -102,15 +102,21 @@ const ProfileView: React.FC<ProfileViewProps> = ({ caseData, onUpdateCase, onDel
   const genogramFileInputRef = useRef<HTMLInputElement>(null);
   const prevCaseIdRef = useRef<string | undefined>(undefined);
   
-  const stats = useMemo(() => {
+    const stats = useMemo(() => {
     const totalInterventions = caseData.interventions.length;
     const pendingTasks = caseData.tasks.filter(t => !t.completed).length;
     const completedTasks = caseData.tasks.filter(t => t.completed).length;
     
-    const expiredInterventions = caseData.interventions.filter(i => 
-        i.status === InterventionStatus.Planned && 
-        new Date(i.end) < new Date()
-    );
+    const seenExpiredIds = new Set<string>();
+    const expiredInterventions = (caseData.interventions || []).filter(i => {
+        if (!i || !i.id || seenExpiredIds.has(i.id)) return false;
+        const isExpired = i.status === InterventionStatus.Planned && new Date(i.end) < new Date();
+        if (isExpired) {
+            seenExpiredIds.add(i.id);
+            return true;
+        }
+        return false;
+    });
     
     let daysInProgram: string | number = 'N/A';
     if (caseData.interventions.length > 0) {

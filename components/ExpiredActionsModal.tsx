@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Intervention, Case, InterventionStatus } from '../types';
 import { IoCloseOutline, IoAlertCircleOutline, IoPencilOutline, IoArrowForwardCircleOutline, IoBookOutline, IoTrashOutline } from 'react-icons/io5';
 
@@ -18,6 +18,15 @@ const ExpiredActionsModal: React.FC<ExpiredActionsModalProps> = ({
     isOpen, onClose, interventions, cases, onSelectCaseById, 
     onEditIntervention, onSaveIntervention, onDeleteIntervention, requestConfirmation 
 }) => {
+    const uniqueInterventions = useMemo(() => {
+        const seen = new Set<string>();
+        return (interventions || []).filter(i => {
+            if (!i || !i.id || seen.has(i.id)) return false;
+            seen.add(i.id);
+            return true;
+        });
+    }, [interventions]);
+
     if (!isOpen) return null;
 
     const getCaseName = (caseId: string | null) => {
@@ -79,9 +88,9 @@ const ExpiredActionsModal: React.FC<ExpiredActionsModalProps> = ({
                     <p className="text-slate-600 text-sm mb-4">
                         Las siguientes intervenciones estaban planificadas pero su fecha ya ha pasado. Por favor, actualiza su estado a "Completada" o "Anulada", o reprográmalas.
                     </p>
-                    {interventions.length > 0 ? (
+                    {uniqueInterventions.length > 0 ? (
                         <ul className="space-y-3">
-                            {interventions.map(event => (
+                            {uniqueInterventions.map(event => (
                                 <li key={event.id} className="bg-slate-50 p-3 rounded-md border border-slate-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                                     <div className="flex-grow min-w-0">
                                         <p className="font-semibold text-slate-800 truncate" title={event.title}>{event.title}</p>

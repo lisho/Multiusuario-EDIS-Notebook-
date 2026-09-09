@@ -181,8 +181,20 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     }>({ item: null, initialValues: undefined });
     
     const allInterventions = useMemo(() => {
-        const caseInterventions = cases.flatMap(c => c.interventions);
-        const combined = [...caseInterventions, ...generalInterventions];
+        const uniqueMap = new Map<string, Intervention>();
+        cases.forEach(c => {
+            (c.interventions || []).forEach(i => {
+                if (i && i.id) {
+                    uniqueMap.set(i.id, i);
+                }
+            });
+        });
+        (generalInterventions || []).forEach(i => {
+            if (i && i.id && !uniqueMap.has(i.id)) {
+                uniqueMap.set(i.id, i);
+            }
+        });
+        const combined = Array.from(uniqueMap.values());
         // Filter interventions for the current user (created by user or assigned to user, or admin)
         return combined.filter(i => i.createdBy === currentUser.id || i.assignedTo?.includes(currentUser.id) || currentUser.role === 'admin');
     }, [cases, generalInterventions, currentUser]);

@@ -19,7 +19,14 @@ export interface SyncEngineCallbacks {
  * Normaliza y migra datos de profesionales
  */
 export function normalizeProfessionals(docs: { id: string; data: () => any }[]): Professional[] {
-    return docs.map(doc => {
+    const seenProfIds = new Set<string>();
+    return docs
+        .filter(doc => {
+            if (!doc || !doc.id || seenProfIds.has(doc.id)) return false;
+            seenProfIds.add(doc.id);
+            return true;
+        })
+        .map(doc => {
         const data = doc.data();
         const prof: Professional = { id: doc.id, ...data } as Professional;
 
@@ -48,7 +55,14 @@ export function normalizeProfessionals(docs: { id: string; data: () => any }[]):
  * Normaliza y migra datos de casos (intervenciones, notas, tareas)
  */
 export function normalizeCases(docs: { id: string; data: () => any }[], lishoId?: string): Case[] {
-    return docs.map(doc => {
+    const seenCaseIds = new Set<string>();
+    return docs
+        .filter(doc => {
+            if (!doc || !doc.id || seenCaseIds.has(doc.id)) return false;
+            seenCaseIds.add(doc.id);
+            return true;
+        })
+        .map(doc => {
         const rawData = doc.data();
         const caseData = { id: doc.id, ...rawData } as Case;
 

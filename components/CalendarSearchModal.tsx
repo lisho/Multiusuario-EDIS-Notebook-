@@ -62,14 +62,21 @@ const CalendarSearchModal: React.FC<CalendarSearchModalProps> = ({
     const filteredInterventions = useMemo(() => {
         if (!searchTerm.trim()) return [];
         const term = searchTerm.toLowerCase();
-        return interventions.filter(intervention => {
+        const seenIds = new Set<string>();
+        return (interventions || []).filter(intervention => {
+            if (!intervention || !intervention.id || seenIds.has(intervention.id)) return false;
             const caseInfo = intervention.caseId ? cases.find(c => c.id === intervention.caseId) : null;
             const caseNameMatch = caseInfo ? caseInfo.name.toLowerCase().includes(term) : false;
             const caseNickMatch = caseInfo && caseInfo.nickname ? caseInfo.nickname.toLowerCase().includes(term) : false;
             const titleMatch = intervention.title.toLowerCase().includes(term);
             const notesMatch = intervention.notes ? intervention.notes.toLowerCase().includes(term) : false;
             const typeMatch = intervention.interventionType.toLowerCase().includes(term);
-            return caseNameMatch || caseNickMatch || titleMatch || notesMatch || typeMatch;
+            const matches = caseNameMatch || caseNickMatch || titleMatch || notesMatch || typeMatch;
+            if (matches) {
+                seenIds.add(intervention.id);
+                return true;
+            }
+            return false;
         }).sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime()); // newest first
     }, [searchTerm, interventions, cases]);
 

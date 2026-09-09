@@ -330,7 +330,10 @@ const App: React.FC = () => {
             const docRef = await addDoc(collection(db, "cases"), newCaseDataForDb);
             const newCase: Case = { id: docRef.id, ...newCaseDataForDb };
             const sorter = getCaseSorter(currentUser?.id, currentUser?.role);
-            setCases(prevCases => [newCase, ...prevCases].sort(sorter));
+            setCases(prevCases => {
+                const filtered = prevCases.filter(c => c.id !== newCase.id);
+                return [newCase, ...filtered].sort(sorter);
+            });
             setIsNewCaseModalOpen(false);
             setSelectedCase(newCase);
         } catch (error) {
@@ -1017,14 +1020,7 @@ const App: React.FC = () => {
         const toolRef = doc(db, "adminTools", tool.id);
         try {
             await setDoc(toolRef, tool, { merge: true });
-            const toolIndex = adminTools.findIndex(t => t.id === tool.id);
-            if (toolIndex > -1) {
-                const newTools = [...adminTools];
-                newTools[toolIndex] = tool;
-                setAdminTools(newTools);
-            } else {
-                setAdminTools([...adminTools, tool]);
-            }
+            setAdminTools(prev => [...prev.filter(t => t.id !== tool.id), tool]);
         } catch(error) {
             console.error("Error saving tool to Firestore: ", error);
         }
@@ -1037,7 +1033,7 @@ const App: React.FC = () => {
             async () => {
                 try {
                     await deleteDoc(doc(db, "adminTools", toolId));
-                    setAdminTools(adminTools.filter(t => t.id !== toolId));
+                    setAdminTools(prev => prev.filter(t => t.id !== toolId));
                 } catch(error) {
                     console.error("Error deleting tool from Firestore: ", error);
                 }
@@ -1049,14 +1045,7 @@ const App: React.FC = () => {
         const profRef = doc(db, "professionals", professional.id);
         try {
             await setDoc(profRef, professional, { merge: true });
-            const profIndex = professionals.findIndex(p => p.id === professional.id);
-            if (profIndex > -1) {
-                const newProfs = [...professionals];
-                newProfs[profIndex] = professional;
-                setProfessionals(newProfs.sort((a,b) => a.name.localeCompare(b.name)));
-            } else {
-                setProfessionals([...professionals, professional].sort((a,b) => a.name.localeCompare(b.name)));
-            }
+            setProfessionals(prev => [...prev.filter(p => p.id !== professional.id), professional].sort((a,b) => a.name.localeCompare(b.name)));
         } catch (error) {
             console.error("Error saving professional: ", error);
         }
@@ -1072,7 +1061,7 @@ const App: React.FC = () => {
             async () => {
                 try {
                     await deleteDoc(doc(db, "professionals", professionalId));
-                    setProfessionals(professionals.filter(p => p.id !== professionalId));
+                    setProfessionals(prev => prev.filter(p => p.id !== professionalId));
                 } catch (error) {
                     console.error("Error deleting professional: ", error);
                 }
