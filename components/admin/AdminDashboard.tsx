@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { AdminTool, InterventionMoment, Professional, ProfessionalRole, Case, Intervention } from '../../types';
+import { AdminTool, InterventionMoment, Professional, ProfessionalRole, Case, Intervention, User } from '../../types';
 import TemplateEditor from './TemplateEditor';
 import ProfessionalEditorModal from './ProfessionalEditorModal';
 import CsvImportModal from './CsvImportModal';
@@ -23,6 +23,7 @@ interface AdminDashboardProps {
   onDeleteIntervention: (intervention: Intervention) => void;
   onBatchDeleteInterventions: (interventions: Intervention[]) => Promise<void>;
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
+  currentUser?: User | null;
 }
 
 type AdminTab = 'tools' | 'professionals' | 'interventions' | 'stats';
@@ -370,6 +371,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                 onClose={handleCloseEditInterventionModal}
                 itemData={editingIntervention}
                 cases={cases}
+                professionals={professionals}
+                currentUser={currentUser || null}
                 onSaveIntervention={onSaveIntervention}
                 onDeleteIntervention={onDeleteIntervention}
                 requestConfirmation={requestConfirmation}

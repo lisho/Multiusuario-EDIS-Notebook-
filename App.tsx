@@ -1694,6 +1694,7 @@ const App: React.FC = () => {
                             onDeleteIntervention={handleDeleteIntervention}
                             onBatchDeleteInterventions={handleBatchDeleteInterventions}
                             requestConfirmation={requestConfirmation}
+                            currentUser={currentUser}
                         />;
             case 'stats':
                 return <MyStatsDashboard 
@@ -1702,7 +1703,7 @@ const App: React.FC = () => {
                         />;
             case 'calendar':
                 return <CalendarView 
-                            cases={visibleCases} 
+                            cases={cases} 
                             generalInterventions={generalInterventions}
                             professionals={professionals}
                             onSaveIntervention={handleSaveIntervention}
@@ -1713,7 +1714,7 @@ const App: React.FC = () => {
                         />;
             case 'allNotes':
                 return <AllNotesView
-                            cases={visibleCases}
+                            cases={cases}
                             generalTasks={currentUserGeneralTasks}
                             generalNotes={currentUserGeneralNotes}
                             currentUser={currentUser}
@@ -1821,10 +1822,10 @@ const App: React.FC = () => {
                             </div>
                         </AnimatedSection>
                         
-                        {!statusFilter && !searchQuery && visibleCases.length > 0 && (
+                        {!statusFilter && !searchQuery && cases.length > 0 && (
                             <div className="mb-12">
                                 <CaseStatsDashboard 
-                                    cases={visibleCases} 
+                                    cases={cases} 
                                     professionals={professionals}
                                     generalInterventions={generalInterventions}
                                     generalTasks={currentUserGeneralTasks}
@@ -2039,7 +2040,7 @@ const App: React.FC = () => {
             <TasksSidePanel
                 mode={tasksPanelState.mode}
                 caseData={tasksPanelState.caseData}
-                allCases={visibleCases}
+                allCases={cases}
                 generalTasks={currentUserGeneralTasks}
                 generalNotes={currentUserGeneralNotes}
                 professionals={professionals}

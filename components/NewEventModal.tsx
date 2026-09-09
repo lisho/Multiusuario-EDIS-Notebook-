@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Case, Intervention, InterventionStatus, InterventionType, Professional, ProfessionalRole, User } from '../types';
 import { IoCloseOutline, IoTrashOutline, IoSaveOutline } from 'react-icons/io5';
 
@@ -18,6 +18,15 @@ const getInitialState = (itemData: Intervention | Partial<Intervention> | null, 
     const now = new Date();
     const start = itemData?.start ? new Date(itemData.start) : now;
     const end = itemData?.end ? new Date(itemData.end) : new Date(now.getTime() + 60 * 60 * 1000);
+
+    let initialAssignedTo: string[] = [];
+    if (itemData?.assignedTo && Array.isArray(itemData.assignedTo) && itemData.assignedTo.length > 0) {
+        initialAssignedTo = itemData.assignedTo;
+    } else if (itemData?.createdBy) {
+        initialAssignedTo = [itemData.createdBy];
+    } else if (currentUser?.id) {
+        initialAssignedTo = [currentUser.id];
+    }
     
     return {
         title: '',
@@ -29,8 +38,8 @@ const getInitialState = (itemData: Intervention | Partial<Intervention> | null, 
         isRegistered: false,
         caseId: null,
         status: InterventionStatus.Planned,
-        assignedTo: itemData?.assignedTo || (currentUser ? [currentUser.id] : []),
         ...itemData,
+        assignedTo: initialAssignedTo,
     };
 };
 
@@ -43,6 +52,44 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
     const [errors, setErrors] = useState<{ title?: string; date?: string }>({});
 
     const isEditing = itemData && 'id' in itemData;
+
+    const edisTechnicians = useMemo(() => {
+        return professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+    }, [professionals]);
+
+    // Check if the selected case has other assigned professionals (e.g. Social Worker, Educator, etc.)
+    const caseOtherProfessionals = useMemo(() => {
+        if (!formData.caseId) return [];
+        const currentCase = cases.find(c => c.id === formData.caseId);
+        if (!currentCase || !currentCase.professionalIds) return [];
+        return professionals.filter(p => 
+            currentCase.professionalIds?.includes(p.id) && p.role !== ProfessionalRole.EdisTechnician
+        );
+    }, [formData.caseId, cases, professionals]);
+
+    const isOnlyMeSelected = Boolean(
+        currentUser?.id && 
+        formData.assignedTo?.length === 1 && 
+        formData.assignedTo[0] === currentUser.id
+    );
+
+    const isAllEdisSelected = Boolean(
+        edisTechnicians.length > 0 && 
+        edisTechnicians.every(t => (formData.assignedTo || []).includes(t.id))
+    );
+
+    const handleSelectOnlyMe = () => {
+        if (!currentUser) return;
+        setFormData(prev => ({ ...prev, assignedTo: [currentUser.id] }));
+    };
+
+    const handleSelectAllEdis = () => {
+        setFormData(prev => ({ ...prev, assignedTo: edisTechnicians.map(t => t.id) }));
+    };
+
+    const handleClearAssigned = () => {
+        setFormData(prev => ({ ...prev, assignedTo: [] }));
+    };
 
     useEffect(() => {
         if (isOpen) {
@@ -179,7 +226,14 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (validate()) {
-            onSaveIntervention(formData as Intervention);
+            const finalAssignedTo = (formData.assignedTo && formData.assignedTo.length > 0)
+                ? formData.assignedTo
+                : (currentUser?.id ? [currentUser.id] : []);
+
+            onSaveIntervention({
+                ...formData,
+                assignedTo: finalAssignedTo,
+            } as Intervention);
             onClose();
         }
     };
@@ -316,26 +370,127 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
                     </div>
 
                     <div>
-                        <label className="block text-slate-700 font-semibold mb-2">Asignar a Técnicos / Profesionales (Calendario compartido)</label>
-                        <div className="p-2 bg-slate-100 border border-slate-300 rounded-lg max-h-40 overflow-y-auto space-y-1">
-                            {professionals.filter(p => p.role === ProfessionalRole.EdisTechnician && p.systemRole !== 'admin').map(p => (
-                                <label key={p.id} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-slate-200">
-                                    <input
-                                        type="checkbox"
-                                        checked={(formData.assignedTo || []).includes(p.id)}
-                                        onChange={() => {
-                                            const current = formData.assignedTo || [];
-                                            const updated = current.includes(p.id)
-                                                ? current.filter(id => id !== p.id)
-                                                : [...current, p.id];
-                                            setFormData(prev => ({ ...prev, assignedTo: updated }));
-                                        }}
-                                        className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                                    />
-                                    <span className="text-sm text-slate-800">{p.name} <span className="text-xs text-slate-500">({p.role})</span></span>
-                                </label>
-                            ))}
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="block text-slate-700 font-semibold text-sm">
+                                Asignar a Técnicos / Profesionales (Calendario y Agenda)
+                            </label>
+                            <span className="text-xs text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full font-medium border border-teal-200">
+                                {(formData.assignedTo || []).length} seleccionado{(formData.assignedTo || []).length === 1 ? '' : 's'}
+                            </span>
                         </div>
+
+                        {/* Botones de selección rápida */}
+                        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                            {currentUser && (
+                                <button
+                                    type="button"
+                                    onClick={handleSelectOnlyMe}
+                                    className={`text-xs px-2.5 py-1 rounded-md font-medium border transition-colors ${
+                                        isOnlyMeSelected
+                                            ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    Solo a mí
+                                </button>
+                            )}
+                            {edisTechnicians.length > 1 && (
+                                <button
+                                    type="button"
+                                    onClick={handleSelectAllEdis}
+                                    className={`text-xs px-2.5 py-1 rounded-md font-medium border transition-colors ${
+                                        isAllEdisSelected
+                                            ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    Todo el equipo EDIS ({edisTechnicians.length})
+                                </button>
+                            )}
+                            {(formData.assignedTo || []).length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={handleClearAssigned}
+                                    className="text-xs px-2 py-1 rounded-md font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors ml-auto"
+                                >
+                                    Desmarcar todos
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="p-2.5 bg-slate-50 border border-slate-300 rounded-lg max-h-48 overflow-y-auto space-y-1">
+                            {edisTechnicians.length === 0 ? (
+                                <p className="text-xs text-slate-500 p-2 text-center">No hay técnicos EDIS registrados.</p>
+                            ) : (
+                                edisTechnicians.map(p => {
+                                    const isSelected = (formData.assignedTo || []).includes(p.id);
+                                    return (
+                                        <label 
+                                            key={p.id} 
+                                            className={`flex items-center gap-2.5 cursor-pointer p-1.5 rounded-md transition-colors ${
+                                                isSelected ? 'bg-teal-50 border border-teal-200/80 text-teal-900' : 'hover:bg-slate-100 text-slate-800'
+                                            }`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => {
+                                                    const current = formData.assignedTo || [];
+                                                    const updated = current.includes(p.id)
+                                                        ? current.filter(id => id !== p.id)
+                                                        : [...current, p.id];
+                                                    setFormData(prev => ({ ...prev, assignedTo: updated }));
+                                                }}
+                                                className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                                            />
+                                            <span className="text-sm font-medium flex items-center gap-1.5">
+                                                {p.name}
+                                                {currentUser?.id === p.id && (
+                                                    <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-semibold">Tú</span>
+                                                )}
+                                            </span>
+                                        </label>
+                                    );
+                                })
+                            )}
+
+                            {caseOtherProfessionals.length > 0 && (
+                                <div className="pt-2 mt-2 border-t border-slate-200">
+                                    <p className="text-[11px] font-semibold text-slate-500 mb-1 px-1">Otros profesionales del caso:</p>
+                                    {caseOtherProfessionals.map(p => {
+                                        const isSelected = (formData.assignedTo || []).includes(p.id);
+                                        return (
+                                            <label 
+                                                key={p.id} 
+                                                className={`flex items-center gap-2.5 cursor-pointer p-1.5 rounded-md transition-colors ${
+                                                    isSelected ? 'bg-teal-50 border border-teal-200/80 text-teal-900' : 'hover:bg-slate-100 text-slate-800'
+                                                }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => {
+                                                        const current = formData.assignedTo || [];
+                                                        const updated = current.includes(p.id)
+                                                            ? current.filter(id => id !== p.id)
+                                                            : [...current, p.id];
+                                                        setFormData(prev => ({ ...prev, assignedTo: updated }));
+                                                    }}
+                                                    className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                                                />
+                                                <span className="text-sm font-medium flex items-center gap-1.5">
+                                                    {p.name}
+                                                    <span className="text-xs text-slate-500">({p.role})</span>
+                                                </span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">
+                            Los técnicos asignados verán esta actuación automáticamente en su calendario y en la agenda de hoy.
+                        </p>
                     </div>
 
                     <div>
