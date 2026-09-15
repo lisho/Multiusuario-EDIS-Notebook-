@@ -501,7 +501,16 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         return allInterventions
             .filter(event => {
                 if (!event || !event.start) return false;
-                const isOnDay = new Date(event.start).toDateString() === dateString;
+
+                const isOnDay = event.isAllDay && event.end
+                    ? (() => {
+                        const check = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+                        const s = new Date(new Date(event.start).getFullYear(), new Date(event.start).getMonth(), new Date(event.start).getDate());
+                        const e = new Date(new Date(event.end).getFullYear(), new Date(event.end).getMonth(), new Date(event.end).getDate());
+                        return check >= s && check <= e;
+                    })()
+                    : new Date(event.start).toDateString() === dateString;
+
                 if (!isOnDay) return false;
 
                 if (!currentUser) return true;
@@ -537,6 +546,18 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         if (agendaTab === 'tomorrow') return tomorrowAgenda;
         return todaysAgenda;
     }, [agendaTab, yesterdayAgenda, todaysAgenda, tomorrowAgenda]);
+
+    const pendingAllDayInterventions = useMemo(() => {
+        return displayedAgenda.filter(event => event.isAllDay && event.status === InterventionStatus.Planned);
+    }, [displayedAgenda]);
+
+    const standardAgendaEvents = useMemo(() => {
+        return displayedAgenda.filter(event => !(event.isAllDay && event.status === InterventionStatus.Planned));
+    }, [displayedAgenda]);
+
+    const todayPendingAllDayCount = useMemo(() => {
+        return todaysAgenda.filter(e => e.isAllDay && e.status === InterventionStatus.Planned).length;
+    }, [todaysAgenda]);
 
     const selectedAgendaDate = useMemo(() => {
         const d = new Date();
@@ -758,6 +779,9 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                             }`}>
                                                 {todaysAgenda.length}
                                             </span>
+                                            {todayPendingAllDayCount > 0 && (
+                                                <span className="w-2 h-2 rounded-full bg-amber-500 ring-2 ring-white animate-pulse" title={`${todayPendingAllDayCount} apunte(s) de día completo pendiente(s)`} />
+                                            )}
                                         </button>
 
                                         <button
@@ -792,124 +816,304 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                     <IoAddOutline className="text-lg" /> Añadir Intervención
                                 </button>
                             </div>
-                            {displayedAgenda.length > 0 ? (
-                                <ul key={agendaTab} className="space-y-3">
-                                    {displayedAgenda.map((event, index) => {
-                                        const Icon = interventionIcons[event.interventionType] || IoDocumentTextOutline;
-                                        const styleClass = interventionTypeStyles[event.interventionType] || 'text-gray-500';
-                                        const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
-                                        const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
-                                        const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
-                                        const currentStatusStyle = statusStyles[event.status];
-                                        const isMenuOpen = openMenuId === event.id;
-                                        
-                                        return (
-                                            <AnimatedLi 
-                                                key={`${agendaTab}-${event.id}`} 
-                                                delay={index * 60} 
-                                                className={`p-3 rounded-lg border flex flex-col gap-3 transition-colors shadow-sm ${event.status === InterventionStatus.Cancelled ? 'bg-slate-50 opacity-70' : 'bg-white'} ${isMenuOpen ? 'relative z-20' : ''}`}
-                                            >
-                                                <div className="flex items-start gap-4">
-                                                    <div className="flex flex-col items-center flex-shrink-0 w-16 text-center">
-                                                        <p className={`font-bold text-slate-700 ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`}>
-                                                            {event.isAllDay ? 'Todo el día' : timeFormat.format(new Date(event.start))}
-                                                        </p>
-                                                        <Icon className={`mt-1 text-2xl ${styleClass}`}/>
-                                                    </div>
-                                                    <div className="flex-grow min-w-0">
-                                                        <p className={`font-semibold text-slate-800 truncate ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`} title={event.title}>{event.title}</p>
-                                                        <p className={`text-sm text-slate-500 ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`}>{event.interventionType}</p>
-                                                        {caseForEvent && (
-                                                            <button 
-                                                                onClick={() => onSelectCaseById(caseForEvent.id)}
-                                                                className="text-sm text-teal-700 hover:underline font-medium truncate text-left block"
-                                                            >
-                                                                {caseForEvent.name}
-                                                                {caseForEvent.nickname && ` (${caseForEvent.nickname})`}
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                                        {associatedProfs.length > 0 && (
-                                                            <div className="flex -space-x-1.5 items-center">
-                                                                {associatedProfs.slice(0, 3).map(prof => (
-                                                                    <TechnicianAvatar
-                                                                        key={prof.id}
-                                                                        professional={prof}
-                                                                        size="sm"
-                                                                        prefix="Asignado/a:"
-                                                                        isCurrentUser={prof.id === currentUser?.id}
-                                                                        tooltipPosition="top"
-                                                                    />
-                                                                ))}
-                                                                {associatedProfs.length > 3 && (
-                                                                    <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold rounded-full bg-slate-200 text-slate-700 border border-white">
-                                                                        +{associatedProfs.length - 3}
+
+                            {/* Alerta de actuaciones de día completo pendientes (Apunte recordatorio en la parte superior) */}
+                            {pendingAllDayInterventions.length > 0 && (
+                                <div className="mb-4 bg-gradient-to-r from-amber-50 via-amber-50/80 to-orange-50/70 border-2 border-amber-300/90 rounded-xl p-3.5 shadow-sm animate-fadeIn">
+                                    <div className="flex items-center justify-between gap-2 mb-2.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500 text-white shadow-xs text-sm font-bold flex-shrink-0 animate-pulse">
+                                                <IoSunnyOutline className="w-4 h-4" />
+                                            </span>
+                                            <div>
+                                                <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide flex items-center gap-1.5">
+                                                    <span>Alerta:</span>
+                                                    <span>{pendingAllDayInterventions.length === 1 ? '1 Actuación de Día Completo Pendiente' : `${pendingAllDayInterventions.length} Actuaciones de Día Completo Pendientes`}</span>
+                                                </h4>
+                                                <p className="text-[11px] text-amber-800 font-medium">
+                                                    {agendaTab === 'today'
+                                                        ? 'Apunte para realizar en algún momento del día de hoy:'
+                                                        : agendaTab === 'tomorrow'
+                                                        ? 'Apunte para realizar en algún momento de mañana:'
+                                                        : 'Apunte planificado de día completo:'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-200/90 text-amber-900 border border-amber-300/80 flex-shrink-0">
+                                            Todo el día
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        {pendingAllDayInterventions.map((event) => {
+                                            const Icon = interventionIcons[event.interventionType] || IoDocumentTextOutline;
+                                            const styleClass = interventionTypeStyles[event.interventionType] || 'text-amber-700';
+                                            const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
+                                            const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
+                                            const isMenuOpen = openMenuId === `allday-${event.id}`;
+
+                                            return (
+                                                <div 
+                                                    key={`allday-alert-${event.id}`}
+                                                    className="bg-white border border-amber-200/90 rounded-lg p-3 shadow-2xs hover:border-amber-400 transition-all flex flex-col gap-2.5"
+                                                >
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="flex items-start gap-2.5 min-w-0 flex-grow">
+                                                            <div className="p-2 rounded-lg bg-amber-100/70 text-amber-800 flex-shrink-0 mt-0.5">
+                                                                <Icon className={`text-lg ${styleClass}`} />
+                                                            </div>
+                                                            <div className="min-w-0 flex-grow">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <p className="font-bold text-sm text-slate-900 leading-snug break-words" title={event.title}>
+                                                                        {event.title}
+                                                                    </p>
+                                                                    <span className="text-[11px] font-semibold px-2 py-0.2 rounded bg-amber-100/80 text-amber-900 border border-amber-200">
+                                                                        {event.interventionType}
                                                                     </span>
+                                                                </div>
+                                                                {caseForEvent && (
+                                                                    <button 
+                                                                        onClick={() => onSelectCaseById(caseForEvent.id)}
+                                                                        className="text-xs text-teal-700 hover:text-teal-900 hover:underline font-semibold truncate text-left mt-0.5 flex items-center gap-1"
+                                                                    >
+                                                                        <span>📁 {caseForEvent.name}</span>
+                                                                        {caseForEvent.nickname && <span className="text-slate-500 font-normal">({caseForEvent.nickname})</span>}
+                                                                    </button>
+                                                                )}
+                                                                {event.notes && (
+                                                                    <p className="text-xs text-slate-600 mt-1 line-clamp-2 italic bg-slate-50 p-1.5 rounded border border-slate-100">
+                                                                        "{event.notes}"
+                                                                    </p>
                                                                 )}
                                                             </div>
-                                                        )}
-                                                        <button onClick={() => handleOpenEditModal(event)} className="text-slate-400 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors" title="Editar intervención">
-                                                            <IoPencilOutline className="text-lg" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center justify-between pl-20">
-                                                    <label 
-                                                        className={`flex items-center gap-1.5 text-sm ${!event.caseId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                                                        title={!event.caseId ? "Solo se pueden registrar intervenciones de un caso" : "Registrar en Cuaderno de Campo"}
-                                                    >
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={!!event.isRegistered} 
-                                                            disabled={!event.caseId}
-                                                            onChange={(e) => handleRegisterToggle(event, e.target.checked)}
-                                                            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed" 
-                                                        />
-                                                        <IoBookOutline className="text-slate-500"/>
-                                                    </label>
-                                                    
-                                                    <div className="relative" ref={openMenuId === event.id ? menuRef : null}>
-                                                        <button
-                                                            onClick={() => setOpenMenuId(openMenuId === event.id ? null : event.id)}
-                                                            className={`flex items-center gap-2 text-xs font-semibold px-2 py-1 rounded-md border ${currentStatusStyle.bg} ${currentStatusStyle.text}`}
-                                                        >
-                                                            <span className={`w-2 h-2 rounded-full ${currentStatusStyle.dot}`}></span>
-                                                            {event.status}
-                                                        </button>
-                                                        {openMenuId === event.id && (
-                                                            <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">
-                                                                <div className="py-1" role="menu" aria-orientation="vertical">
-                                                                    {Object.values(InterventionStatus).map(status => {
-                                                                        const style = statusStyles[status];
-                                                                        return (
-                                                                            <button
-                                                                                key={status}
-                                                                                onClick={() => handleStatusChange(event, status)}
-                                                                                className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
-                                                                                role="menuitem"
-                                                                            >
-                                                                                <span className={`w-2 h-2 rounded-full ${style.dot}`}></span>
-                                                                                {status}
-                                                                            </button>
-                                                                        )
-                                                                    })}
+                                                        </div>
+
+                                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                            {associatedProfs.length > 0 && (
+                                                                <div className="flex -space-x-1.5 items-center mr-1">
+                                                                    {associatedProfs.slice(0, 3).map(prof => (
+                                                                        <TechnicianAvatar
+                                                                            key={prof.id}
+                                                                            professional={prof}
+                                                                            size="sm"
+                                                                            prefix="Asignado/a:"
+                                                                            isCurrentUser={prof.id === currentUser?.id}
+                                                                            tooltipPosition="top"
+                                                                        />
+                                                                    ))}
+                                                                    {associatedProfs.length > 3 && (
+                                                                        <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold rounded-full bg-slate-200 text-slate-700 border border-white">
+                                                                            +{associatedProfs.length - 3}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
+                                                            )}
+                                                            <button 
+                                                                onClick={() => handleOpenEditModal(event)} 
+                                                                className="text-slate-400 hover:text-teal-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer" 
+                                                                title="Editar apunte de día completo"
+                                                            >
+                                                                <IoPencilOutline className="text-base" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Barra de acciones rápidas */}
+                                                    <div className="flex items-center justify-between pt-2 border-t border-amber-100 text-xs gap-2 flex-wrap">
+                                                        <label 
+                                                            className={`flex items-center gap-1.5 font-medium text-slate-600 ${!event.caseId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:text-slate-900'}`}
+                                                            title={!event.caseId ? "Solo se pueden registrar intervenciones de un caso" : "Registrar en Cuaderno de Campo"}
+                                                        >
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={!!event.isRegistered} 
+                                                                disabled={!event.caseId}
+                                                                onChange={(e) => handleRegisterToggle(event, e.target.checked)}
+                                                                className="h-3.5 w-3.5 rounded border-slate-300 text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed cursor-pointer" 
+                                                            />
+                                                            <span className="flex items-center gap-1 text-[11px]">
+                                                                <IoBookOutline className="text-slate-500 text-sm"/>
+                                                                Cuaderno de campo
+                                                            </span>
+                                                        </label>
+
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleStatusChange(event, InterventionStatus.Completed)}
+                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-2xs transition-colors cursor-pointer"
+                                                                title="Marcar como realizada"
+                                                            >
+                                                                <IoCheckmarkCircleOutline className="text-sm" />
+                                                                <span>Marcar realizada</span>
+                                                            </button>
+
+                                                            <div className="relative" ref={isMenuOpen ? menuRef : null}>
+                                                                <button
+                                                                    onClick={() => setOpenMenuId(isMenuOpen ? null : `allday-${event.id}`)}
+                                                                    className="text-[11px] font-medium px-2 py-1 rounded bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300 transition-colors cursor-pointer"
+                                                                >
+                                                                    Planificada ▾
+                                                                </button>
+                                                                {isMenuOpen && (
+                                                                    <div className="absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-30 py-1">
+                                                                        {Object.values(InterventionStatus).map(status => {
+                                                                            const style = statusStyles[status];
+                                                                            return (
+                                                                                <button
+                                                                                    key={status}
+                                                                                    onClick={() => handleStatusChange(event, status)}
+                                                                                    className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 cursor-pointer"
+                                                                                >
+                                                                                    <span className={`w-2 h-2 rounded-full ${style.dot}`}></span>
+                                                                                    {status}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                        )}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </AnimatedLi>
-                                        );
-                                    })}
-                                </ul>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {standardAgendaEvents.length > 0 ? (
+                                <div className="space-y-2">
+                                    {pendingAllDayInterventions.length > 0 && (
+                                        <div className="flex items-center gap-1.5 pt-1 pb-1 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            <IoTimeOutline className="text-sm" />
+                                            <span>Citas y actuaciones con horario</span>
+                                        </div>
+                                    )}
+                                    <ul key={agendaTab} className="space-y-3">
+                                        {standardAgendaEvents.map((event, index) => {
+                                            const Icon = interventionIcons[event.interventionType] || IoDocumentTextOutline;
+                                            const styleClass = interventionTypeStyles[event.interventionType] || 'text-gray-500';
+                                            const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
+                                            const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
+                                            const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                            const currentStatusStyle = statusStyles[event.status];
+                                            const isMenuOpen = openMenuId === event.id;
+                                            
+                                            return (
+                                                <AnimatedLi 
+                                                    key={`${agendaTab}-${event.id}`} 
+                                                    delay={index * 60} 
+                                                    className={`p-3 rounded-lg border flex flex-col gap-3 transition-colors shadow-sm ${event.status === InterventionStatus.Cancelled ? 'bg-slate-50 opacity-70' : 'bg-white'} ${isMenuOpen ? 'relative z-20' : ''}`}
+                                                >
+                                                    <div className="flex items-start gap-4">
+                                                        <div className="flex flex-col items-center flex-shrink-0 w-16 text-center">
+                                                            <p className={`font-bold text-slate-700 ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`}>
+                                                                {event.isAllDay ? 'Todo el día' : timeFormat.format(new Date(event.start))}
+                                                            </p>
+                                                            <Icon className={`mt-1 text-2xl ${styleClass}`}/>
+                                                        </div>
+                                                        <div className="flex-grow min-w-0">
+                                                            <p className={`font-semibold text-slate-800 truncate ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`} title={event.title}>{event.title}</p>
+                                                            <p className={`text-sm text-slate-500 ${event.status === InterventionStatus.Cancelled ? 'line-through' : ''}`}>{event.interventionType}</p>
+                                                            {caseForEvent && (
+                                                                <button 
+                                                                    onClick={() => onSelectCaseById(caseForEvent.id)}
+                                                                    className="text-sm text-teal-700 hover:underline font-medium truncate text-left block"
+                                                                >
+                                                                    {caseForEvent.name}
+                                                                    {caseForEvent.nickname && ` (${caseForEvent.nickname})`}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                                            {associatedProfs.length > 0 && (
+                                                                <div className="flex -space-x-1.5 items-center">
+                                                                    {associatedProfs.slice(0, 3).map(prof => (
+                                                                        <TechnicianAvatar
+                                                                            key={prof.id}
+                                                                            professional={prof}
+                                                                            size="sm"
+                                                                            prefix="Asignado/a:"
+                                                                            isCurrentUser={prof.id === currentUser?.id}
+                                                                            tooltipPosition="top"
+                                                                        />
+                                                                    ))}
+                                                                    {associatedProfs.length > 3 && (
+                                                                        <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold rounded-full bg-slate-200 text-slate-700 border border-white">
+                                                                            +{associatedProfs.length - 3}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            <button onClick={() => handleOpenEditModal(event)} className="text-slate-400 hover:text-teal-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer" title="Editar intervención">
+                                                                <IoPencilOutline className="text-lg" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center justify-between pl-20">
+                                                        <label 
+                                                            className={`flex items-center gap-1.5 text-sm ${!event.caseId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                                                            title={!event.caseId ? "Solo se pueden registrar intervenciones de un caso" : "Registrar en Cuaderno de Campo"}
+                                                        >
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={!!event.isRegistered} 
+                                                                disabled={!event.caseId}
+                                                                onChange={(e) => handleRegisterToggle(event, e.target.checked)}
+                                                                className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed" 
+                                                            />
+                                                            <IoBookOutline className="text-slate-500"/>
+                                                        </label>
+                                                        
+                                                        <div className="relative" ref={openMenuId === event.id ? menuRef : null}>
+                                                            <button
+                                                                onClick={() => setOpenMenuId(openMenuId === event.id ? null : event.id)}
+                                                                className={`flex items-center gap-2 text-xs font-semibold px-2 py-1 rounded-md border ${currentStatusStyle.bg} ${currentStatusStyle.text}`}
+                                                            >
+                                                                <span className={`w-2 h-2 rounded-full ${currentStatusStyle.dot}`}></span>
+                                                                {event.status}
+                                                            </button>
+                                                            {openMenuId === event.id && (
+                                                                <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">
+                                                                    <div className="py-1" role="menu" aria-orientation="vertical">
+                                                                        {Object.values(InterventionStatus).map(status => {
+                                                                            const style = statusStyles[status];
+                                                                            return (
+                                                                                <button
+                                                                                    key={status}
+                                                                                    onClick={() => handleStatusChange(event, status)}
+                                                                                    className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                                                                                    role="menuitem"
+                                                                                >
+                                                                                    <span className={`w-2 h-2 rounded-full ${style.dot}`}></span>
+                                                                                    {status}
+                                                                                </button>
+                                                                            )
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </AnimatedLi>
+                                            );
+                                        })}
+                                    </ul>
+                                </div>
                             ) : (
                                 <div className="text-center text-slate-500 py-6">
-                                    <p>
-                                        {agendaTab === 'yesterday' && 'No hubo nada programado para ayer.'}
-                                        {agendaTab === 'today' && 'No hay nada programado para hoy.'}
-                                        {agendaTab === 'tomorrow' && 'No hay nada programado para mañana.'}
-                                    </p>
+                                    {pendingAllDayInterventions.length > 0 ? (
+                                        <p className="text-xs text-slate-500 italic">
+                                            No hay otras citas con horario fijado para este día.
+                                        </p>
+                                    ) : (
+                                        <p>
+                                            {agendaTab === 'yesterday' && 'No hubo nada programado para ayer.'}
+                                            {agendaTab === 'today' && 'No hay nada programado para hoy.'}
+                                            {agendaTab === 'tomorrow' && 'No hay nada programado para mañana.'}
+                                        </p>
+                                    )}
                                 </div>
                             )}
                         </div>
