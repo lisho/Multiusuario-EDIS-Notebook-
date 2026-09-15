@@ -17,13 +17,14 @@ import Login from './components/Login';
 import ProfileEditorModal from './components/ProfileEditorModal';
 import GenogramViewer from './components/GenogramViewer';
 import AllNotesView from './components/AllNotesView';
+import { QuickMobileHubModal } from './components/QuickMobileHubModal';
 import { UnifiedItemData } from './components/UnifiedNoteModal';
 import { Case, CaseStatus, Task, AdminTool, Intervention, InterventionRecord, Professional, DashboardView, MyNote, User, ProfessionalRole } from './types';
 import { db, auth } from './services/firebase';
 import { setupRealtimeSync, SyncStatus } from './services/syncService';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { collection, query, getDocs, addDoc, doc, updateDoc, deleteDoc, writeBatch, setDoc } from 'firebase/firestore';
-import { IoAddOutline, IoCloseCircleOutline, IoSearchOutline, IoChevronDownOutline, IoWarningOutline, IoCloseOutline } from 'react-icons/io5';
+import { IoAddOutline, IoCloseCircleOutline, IoSearchOutline, IoChevronDownOutline, IoWarningOutline, IoCloseOutline, IoMicOutline, IoFlashOutline } from 'react-icons/io5';
 import { BsPinAngleFill } from 'react-icons/bs';
 
 const AnimatedSection: React.FC<{ children: React.ReactNode; delay: number; className?: string }> = ({ children, delay, className = "" }) => {
@@ -117,6 +118,8 @@ const App: React.FC = () => {
         isOpen: boolean;
         caseData: Case | null;
     }>({ isOpen: false, caseData: null });
+    const [isQuickMobileHubOpen, setIsQuickMobileHubOpen] = useState(false);
+    const hasAutoOpenedMobileHub = useRef(false);
 
     const requestConfirmation = (title: string, message: string, onConfirm: () => void) => {
         setConfirmationState({ isOpen: true, title, message, onConfirm });
@@ -142,6 +145,17 @@ const App: React.FC = () => {
 
     useEffect(() => {
         currentUserRef.current = currentUser;
+        if (currentUser && !hasAutoOpenedMobileHub.current) {
+            hasAutoOpenedMobileHub.current = true;
+            const isMobileScreen = typeof window !== 'undefined' && (
+                window.innerWidth <= 768 || 
+                (navigator.maxTouchPoints > 0 && window.innerWidth <= 860)
+            );
+            if (isMobileScreen) {
+                // Automatically display the quick mobile access modal on mobile startup
+                setIsQuickMobileHubOpen(true);
+            }
+        }
     }, [currentUser]);
 
     const handleLogin = (professional: Professional) => {
@@ -2001,6 +2015,7 @@ const App: React.FC = () => {
                 onOpenProfile={() => setIsProfileModalOpen(true)}
                 syncStatus={syncStatus}
                 lastSyncedAt={lastSyncedAt}
+                onOpenMobileHub={() => setIsQuickMobileHubOpen(true)}
                 onManualSync={() => {
                     setSyncStatus('syncing');
                     setTimeout(() => {
@@ -2024,6 +2039,31 @@ const App: React.FC = () => {
             <main className={authError ? "pt-[calc(7.5rem+env(safe-area-inset-top))]" : "pt-[calc(4rem+env(safe-area-inset-top))]"}>
                 {renderContent()}
             </main>
+
+            {/* Mobile Floating Action Button (FAB) for Instant Quick Access & Dictation */}
+            <button
+                onClick={() => setIsQuickMobileHubOpen(true)}
+                className="md:hidden fixed bottom-5 right-5 z-40 bg-gradient-to-r from-teal-600 to-cyan-700 hover:from-teal-700 hover:to-cyan-800 text-white p-3.5 rounded-full shadow-2xl flex items-center justify-center border-2 border-white/90 active:scale-95 transition-transform cursor-pointer"
+                title="Abrir Acceso Rápido Móvil (Dictado IA y Agenda)"
+                aria-label="Acceso Rápido Móvil y Dictado IA"
+            >
+                <IoMicOutline className="text-2xl text-amber-300" />
+            </button>
+
+            <QuickMobileHubModal
+                isOpen={isQuickMobileHubOpen}
+                onClose={() => setIsQuickMobileHubOpen(false)}
+                cases={cases}
+                generalInterventions={generalInterventions}
+                professionals={professionals}
+                currentUser={currentUser}
+                onSaveIntervention={handleSaveIntervention}
+                onSelectCaseById={handleSelectCaseById}
+                onNavigateToView={(view) => {
+                    setCurrentView(view);
+                    setSelectedCase(null);
+                }}
+            />
             <NewCaseModal 
                 isOpen={isNewCaseModalOpen} 
                 onClose={() => setIsNewCaseModalOpen(false)} 

@@ -305,3 +305,63 @@ Asegúrate de extraer TODOS los eventos presentes en el documento.
         throw new Error('No se pudieron extraer los eventos del PDF utilizando la IA.');
     }
 };
+
+export type EnhancementStyle = 'technical' | 'structured' | 'summary' | 'grammar';
+
+export const enhanceInterventionNotes = async (
+    rawText: string,
+    style: EnhancementStyle = 'technical',
+    context?: { caseName?: string; interventionType?: string }
+): Promise<string> => {
+    if (!rawText || !rawText.trim()) {
+        return '';
+    }
+
+    const styleInstructions: Record<EnhancementStyle, string> = {
+        technical: `Transforma el texto dictado o redactado por el profesional en una nota de intervención social formal, técnica, objetiva y rigurosa.
+- Elimina muletillas ("bueno", "eh", "pues", "o sea"), titubeos y repeticiones orales del dictado por voz.
+- Emplea terminología profesional propia del trabajo social y de los servicios sociales de inclusión.
+- Mantén la fidelidad estricta a los hechos y detalles aportados sin inventar datos que no estén en el texto.
+- Redacta con tono profesional descriptivo en español neutro de España.`,
+        structured: `Organiza y estructura el texto dictado en tres apartados claros con formato Markdown:
+**1. Motivo/Objetivo:** (Propósito de la actuación o contacto)
+**2. Desarrollo y Observaciones:** (Hechos, información tratada y observaciones relevantes)
+**3. Acuerdos y Próximos Pasos:** (Compromisos adquiridos, tareas pendientes o derivaciones)
+- Limpia las muletillas y la informalidad del dictado por voz.
+- No inventes información; sintetiza los hechos con rigor profesional.`,
+        summary: `Genera un resumen ejecutivo sintético, claro y directo (máximo 3-4 frases) de los puntos clave de la intervención, destacando lo esencial para una consulta rápida.`,
+        grammar: `Corrige únicamente la ortografía, puntuación, mayúsculas, concordancia y coherencia gramatical del texto, conservando exactamente el vocabulario, estilo y estructura original del autor.`
+    };
+
+    const contextInfo = context
+        ? `\nContexto adicional: ${context.caseName ? `Caso: "${context.caseName}". ` : ''}${context.interventionType ? `Tipo de intervención: "${context.interventionType}".` : ''}`
+        : '';
+
+    const prompt = `Eres un asistente experto en redacción técnica y supervisión documental para profesionales de Trabajo Social e Inclusión (EDIS).
+
+Instrucción de estilo solicitada:
+${styleInstructions[style]}
+${contextInfo}
+
+Texto original a procesar (dictado o notas rápidas):
+"""
+${rawText}
+"""
+
+Responde ÚNICAMENTE con el texto final mejorado, sin preámbulos, intros ni saludos.`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: prompt,
+            config: {
+                temperature: 0.3,
+            }
+        });
+
+        return response.text ? response.text.trim() : rawText;
+    } catch (error) {
+        console.error('Error enhancing intervention notes with Gemini API:', error);
+        throw new Error('No se pudo mejorar la redacción con la IA. Comprueba tu conexión o clave de API.');
+    }
+};

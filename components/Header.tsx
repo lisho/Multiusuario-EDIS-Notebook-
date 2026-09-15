@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Professional } from '../types';
 import { SyncStatus } from '../services/syncService';
-import { IoAddOutline, IoChevronDownOutline, IoCreateOutline, IoLogOutOutline, IoAppsOutline, IoConstructOutline, IoCalendarOutline, IoStatsChartOutline, IoSyncOutline } from 'react-icons/io5';
+import { IoAddOutline, IoChevronDownOutline, IoCreateOutline, IoLogOutOutline, IoAppsOutline, IoConstructOutline, IoCalendarOutline, IoStatsChartOutline, IoSyncOutline, IoFlashOutline, IoMicOutline } from 'react-icons/io5';
 
 interface HeaderProps {
     onNewCase: () => void;
@@ -17,6 +17,7 @@ interface HeaderProps {
     syncStatus?: SyncStatus;
     lastSyncedAt?: Date | null;
     onManualSync?: () => void;
+    onOpenMobileHub?: () => void;
 }
 
 const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
@@ -32,7 +33,8 @@ const Header: React.FC<HeaderProps> = ({
     onOpenProfile,
     syncStatus = 'connected',
     lastSyncedAt,
-    onManualSync
+    onManualSync,
+    onOpenMobileHub
 }) => {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -85,6 +87,18 @@ const Header: React.FC<HeaderProps> = ({
             </div>
             
             <div className="flex items-center gap-2 sm:gap-4">
+                {/* Mobile Quick Hub Button */}
+                {onOpenMobileHub && (
+                    <button
+                        onClick={onOpenMobileHub}
+                        className="flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-cyan-600 text-white px-2.5 py-1.5 rounded-lg hover:from-teal-700 hover:to-cyan-700 font-bold text-xs shadow-xs transition-all cursor-pointer"
+                        title="Abrir Acceso Rápido Móvil (Dictado IA y Agenda)"
+                    >
+                        <IoMicOutline className="text-sm text-amber-300" />
+                        <span className="hidden xs:inline">Dictar / Móvil</span>
+                    </button>
+                )}
+
                 {/* Real-time sync badge */}
                 <div 
                     onClick={onManualSync}
