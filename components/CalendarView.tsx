@@ -550,9 +550,19 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
             <div className="relative flex-1">
                 {/* Background Grid */}
                 <div className="grid-lines grid grid-cols-7">
-                    {Array.from({ length: (END_HOUR - START_HOUR) * 7 }).map((_, i) => (
-                        <div key={`grid-cell-${i}`} style={{ height: `${HOUR_HEIGHT}px` }} className="border-b border-l border-slate-200"></div>
-                    ))}
+                    {Array.from({ length: (END_HOUR - START_HOUR) * 7 }).map((_, i) => {
+                        const dayIndex = i % 7;
+                        const targetDay = weekDays[dayIndex];
+                        return (
+                            <div 
+                                key={`grid-cell-${i}`} 
+                                style={{ height: `${HOUR_HEIGHT}px` }} 
+                                className="border-b border-l border-slate-200 cursor-pointer hover:bg-teal-50/30 transition-colors"
+                                onClick={() => handleOpenModal(null, { start: targetDay.toISOString() })}
+                                title={`Crear cita para ${targetDay.toLocaleDateString('es-ES')}`}
+                            ></div>
+                        );
+                    })}
                 </div>
     
                 {/* Events */}
@@ -651,7 +661,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 {/* Background grid lines */}
                 <div className="grid-lines">
                     {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => (
-                        <div key={`grid-line-${i}`} style={{ height: `${HOUR_HEIGHT}px` }} className="border-b border-slate-200"></div>
+                        <div 
+                            key={`grid-line-${i}`} 
+                            style={{ height: `${HOUR_HEIGHT}px` }} 
+                            className="border-b border-slate-200 cursor-pointer hover:bg-teal-50/30 transition-colors"
+                            onClick={() => handleOpenModal(null, { start: currentDate.toISOString() })}
+                            title={`Crear cita para ${currentDate.toLocaleDateString('es-ES')}`}
+                        ></div>
                     ))}
                 </div>
                 

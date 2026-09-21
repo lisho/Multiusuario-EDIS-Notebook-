@@ -88,12 +88,24 @@ export const QuickMobileHubModal: React.FC<QuickMobileHubModalProps> = ({
     const [copiedToClipboard, setCopiedToClipboard] = useState(false);
 
     // --- Quick Event State ---
+    const getLocalHHMM = (d: Date) => {
+        const hours = d.getHours().toString().padStart(2, '0');
+        const minutes = d.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
+    };
+
     const [quickTitle, setQuickTitle] = useState('');
     const [quickCaseId, setQuickCaseId] = useState('');
     const [quickType, setQuickType] = useState<InterventionType>(InterventionType.Meeting);
-    const [quickDate, setQuickDate] = useState(() => new Date().toISOString().split('T')[0]);
-    const [quickStartTime, setQuickStartTime] = useState('09:00');
-    const [quickEndTime, setQuickEndTime] = useState('10:00');
+    const [quickDate, setQuickDate] = useState(() => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    });
+    const [quickStartTime, setQuickStartTime] = useState(() => getLocalHHMM(new Date()));
+    const [quickEndTime, setQuickEndTime] = useState(() => getLocalHHMM(new Date(Date.now() + 60 * 60 * 1000)));
     const [quickIsAllDay, setQuickIsAllDay] = useState(false);
     const [quickAssigned, setQuickAssigned] = useState<string[]>(currentUser?.id ? [currentUser.id] : []);
     const [quickNotes, setQuickNotes] = useState('');

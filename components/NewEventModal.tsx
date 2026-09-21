@@ -15,9 +15,40 @@ interface NewEventModalProps {
 }
 
 const getInitialState = (itemData: Intervention | Partial<Intervention> | null, currentUser: User | null): Partial<Intervention> => {
+    const isEditing = Boolean(itemData && 'id' in itemData && itemData.id);
     const now = new Date();
-    const start = itemData?.start ? new Date(itemData.start) : now;
-    const end = itemData?.end ? new Date(itemData.end) : new Date(now.getTime() + 60 * 60 * 1000);
+
+    let startIso: string;
+    let endIso: string;
+
+    if (isEditing && itemData?.start && itemData?.end) {
+        startIso = new Date(itemData.start).toISOString();
+        endIso = new Date(itemData.end).toISOString();
+    } else {
+        // Target date selection:
+        // Use the date from itemData.start if provided (e.g. clicked on a calendar day), otherwise today.
+        let targetYear = now.getFullYear();
+        let targetMonth = now.getMonth();
+        let targetDay = now.getDate();
+
+        if (itemData?.start) {
+            const parsedStart = new Date(itemData.start);
+            if (!isNaN(parsedStart.getTime())) {
+                targetYear = parsedStart.getFullYear();
+                targetMonth = parsedStart.getMonth();
+                targetDay = parsedStart.getDate();
+            }
+        }
+
+        // Start time MUST ALWAYS be the current time (hours and minutes)
+        const startDate = new Date(targetYear, targetMonth, targetDay, now.getHours(), now.getMinutes(), 0, 0);
+
+        // End time MUST ALWAYS be 60 minutes later
+        const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+
+        startIso = startDate.toISOString();
+        endIso = endDate.toISOString();
+    }
 
     let initialAssignedTo: string[] = [];
     if (itemData?.assignedTo && Array.isArray(itemData.assignedTo) && itemData.assignedTo.length > 0) {
@@ -31,14 +62,14 @@ const getInitialState = (itemData: Intervention | Partial<Intervention> | null, 
     return {
         title: '',
         interventionType: InterventionType.Meeting,
-        start: start.toISOString(),
-        end: end.toISOString(),
         isAllDay: false,
         notes: '',
         isRegistered: false,
         caseId: null,
         status: InterventionStatus.Planned,
         ...itemData,
+        start: startIso,
+        end: endIso,
         assignedTo: initialAssignedTo,
     };
 };
