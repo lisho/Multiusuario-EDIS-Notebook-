@@ -14,7 +14,7 @@ interface NewEventModalProps {
     requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
 }
 
-const getInitialState = (itemData: Intervention | Partial<Intervention> | null, currentUser: User | null): Partial<Intervention> => {
+const getInitialState = (itemData: Intervention | (Partial<Intervention> & { hasExplicitTime?: boolean; isDayOnly?: boolean }) | null, currentUser: User | null): Partial<Intervention> => {
     const isEditing = Boolean(itemData && 'id' in itemData && itemData.id);
     const now = new Date();
 
@@ -31,19 +31,31 @@ const getInitialState = (itemData: Intervention | Partial<Intervention> | null, 
         let targetMonth = now.getMonth();
         let targetDay = now.getDate();
 
+        let targetHours = now.getHours();
+        let targetMinutes = now.getMinutes();
+
         if (itemData?.start) {
             const parsedStart = new Date(itemData.start);
             if (!isNaN(parsedStart.getTime())) {
                 targetYear = parsedStart.getFullYear();
                 targetMonth = parsedStart.getMonth();
                 targetDay = parsedStart.getDate();
+
+                // If explicit time was passed (e.g. clicked on a specific hour space in week/day view):
+                if ((itemData as any).hasExplicitTime) {
+                    targetHours = parsedStart.getHours();
+                    targetMinutes = parsedStart.getMinutes();
+                } else if (!(itemData as any).isDayOnly && (parsedStart.getHours() !== 0 || parsedStart.getMinutes() !== 0)) {
+                    targetHours = parsedStart.getHours();
+                    targetMinutes = parsedStart.getMinutes();
+                }
             }
         }
 
-        // Start time MUST ALWAYS be the current time (hours and minutes)
-        const startDate = new Date(targetYear, targetMonth, targetDay, now.getHours(), now.getMinutes(), 0, 0);
+        // Start time: explicit clicked slot hour or current time
+        const startDate = new Date(targetYear, targetMonth, targetDay, targetHours, targetMinutes, 0, 0);
 
-        // End time MUST ALWAYS be 60 minutes later
+        // End time is always 60 minutes after start time
         const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
 
         startIso = startDate.toISOString();

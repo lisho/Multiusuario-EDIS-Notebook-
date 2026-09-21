@@ -451,7 +451,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                         <IoSearchOutline className="text-xl" />
                     </button>
                      <button
-                        onClick={() => handleOpenModal(null, { start: currentDate.toISOString() })}
+                        onClick={() => handleOpenModal(null, { start: currentDate.toISOString(), isDayOnly: true } as any)}
                         className="bg-teal-600 text-white w-10 h-10 rounded-lg hover:bg-teal-700 flex items-center justify-center transition-colors"
                         aria-label="Añadir nueva intervención"
                         title="Añadir nueva intervención"
@@ -494,7 +494,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                     <div
                         key={day.toISOString()}
                         className={`relative border-t border-r border-slate-200 min-h-[90px] sm:min-h-[120px] overflow-y-auto p-1.5 cursor-pointer transition-colors hover:bg-slate-100/50 ${isCurrentMonth ? 'bg-white' : 'bg-slate-50'}`}
-                        onClick={() => handleOpenModal(null, { start: cloneDay.toISOString() })}
+                        onClick={() => handleOpenModal(null, { start: cloneDay.toISOString(), isDayOnly: true } as any)}
                     >
                         <span className={`text-sm font-medium ${isToday ? 'bg-teal-600 text-white rounded-full w-6 h-6 flex items-center justify-center' : isCurrentMonth ? 'text-slate-700' : 'text-slate-400'}`}>
                             {cloneDay.getDate()}
@@ -552,14 +552,17 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 <div className="grid-lines grid grid-cols-7">
                     {Array.from({ length: (END_HOUR - START_HOUR) * 7 }).map((_, i) => {
                         const dayIndex = i % 7;
+                        const hourIndex = Math.floor(i / 7);
+                        const hour = START_HOUR + hourIndex;
                         const targetDay = weekDays[dayIndex];
+                        const slotDate = new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate(), hour, 0, 0, 0);
                         return (
                             <div 
                                 key={`grid-cell-${i}`} 
                                 style={{ height: `${HOUR_HEIGHT}px` }} 
-                                className="border-b border-l border-slate-200 cursor-pointer hover:bg-teal-50/30 transition-colors"
-                                onClick={() => handleOpenModal(null, { start: targetDay.toISOString() })}
-                                title={`Crear cita para ${targetDay.toLocaleDateString('es-ES')}`}
+                                className="border-b border-l border-slate-200 cursor-pointer hover:bg-teal-50/40 transition-colors"
+                                onClick={() => handleOpenModal(null, { start: slotDate.toISOString(), hasExplicitTime: true } as any)}
+                                title={`Crear cita para ${targetDay.toLocaleDateString('es-ES')} a las ${hour.toString().padStart(2, '0')}:00`}
                             ></div>
                         );
                     })}
@@ -660,15 +663,19 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
             <div className="relative flex-1">
                 {/* Background grid lines */}
                 <div className="grid-lines">
-                    {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => (
-                        <div 
-                            key={`grid-line-${i}`} 
-                            style={{ height: `${HOUR_HEIGHT}px` }} 
-                            className="border-b border-slate-200 cursor-pointer hover:bg-teal-50/30 transition-colors"
-                            onClick={() => handleOpenModal(null, { start: currentDate.toISOString() })}
-                            title={`Crear cita para ${currentDate.toLocaleDateString('es-ES')}`}
-                        ></div>
-                    ))}
+                    {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => {
+                        const hour = START_HOUR + i;
+                        const slotDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), hour, 0, 0, 0);
+                        return (
+                            <div 
+                                key={`grid-line-${i}`} 
+                                style={{ height: `${HOUR_HEIGHT}px` }} 
+                                className="border-b border-slate-200 cursor-pointer hover:bg-teal-50/40 transition-colors"
+                                onClick={() => handleOpenModal(null, { start: slotDate.toISOString(), hasExplicitTime: true } as any)}
+                                title={`Crear cita para ${currentDate.toLocaleDateString('es-ES')} a las ${hour.toString().padStart(2, '0')}:00`}
+                            ></div>
+                        );
+                    })}
                 </div>
                 
                 {/* Timed Events */}
