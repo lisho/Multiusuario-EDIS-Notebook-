@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Intervention, Case, Professional, User } from '../types';
-import { IoCloseOutline, IoSearchOutline } from 'react-icons/io5';
+import { IoCloseOutline, IoSearchOutline, IoLockClosedOutline } from 'react-icons/io5';
 import TechnicianAvatar from './TechnicianAvatar';
 
 interface CalendarSearchModalProps {
@@ -33,6 +33,15 @@ const CalendarSearchModal: React.FC<CalendarSearchModalProps> = ({
             }, 100);
         }
     }, [isOpen]);
+
+    const isFullDetailsAuthorized = (intervention: Intervention): boolean => {
+        if (!currentUser) return true;
+        if (currentUser.role === 'admin') return true;
+        if (intervention.createdBy === currentUser.id) return true;
+        if (intervention.assignedTo && Array.isArray(intervention.assignedTo) && intervention.assignedTo.includes(currentUser.id)) return true;
+        if (intervention.isShared !== false) return true;
+        return false;
+    };
 
     const getAssociatedProfessionals = (intervention: Intervention, caseInfo: Case | null | undefined): Professional[] => {
         const found = new Map<string, Professional>();
@@ -125,7 +134,8 @@ const CalendarSearchModal: React.FC<CalendarSearchModalProps> = ({
                     ) : (
                         <ul className="space-y-1">
                             {filteredInterventions.map(intervention => {
-                                const caseInfo = intervention.caseId ? cases.find(c => c.id === intervention.caseId) : null;
+                                const canView = isFullDetailsAuthorized(intervention);
+                                const caseInfo = canView && intervention.caseId ? cases.find(c => c.id === intervention.caseId) : null;
                                 const associatedProfs = getAssociatedProfessionals(intervention, caseInfo);
 
                                 return (
@@ -135,19 +145,29 @@ const CalendarSearchModal: React.FC<CalendarSearchModalProps> = ({
                                                 onSelectIntervention(intervention);
                                                 onClose();
                                             }}
-                                            className="w-full text-left p-3 hover:bg-slate-50 rounded-lg transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2 border border-transparent hover:border-slate-100 group"
+                                            className="w-full text-left p-3 hover:bg-slate-50 rounded-lg transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2 border border-transparent hover:border-slate-100 group cursor-pointer"
                                         >
                                             <div className="flex flex-col flex-1 min-w-0 pr-2">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="font-semibold text-slate-800 truncate">
-                                                        {caseInfo ? `${caseInfo.name.split(' ')[0]} - ` : ''}{intervention.title}
-                                                    </span>
+                                                    {!canView ? (
+                                                        <span className="font-semibold text-slate-700 truncate flex items-center gap-1.5">
+                                                            <IoLockClosedOutline className="text-amber-600 flex-shrink-0" />
+                                                            <span>Ocupado ({intervention.interventionType})</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span className="font-semibold text-slate-800 truncate flex items-center gap-1.5">
+                                                            {intervention.isShared === false && (
+                                                                <IoLockClosedOutline className="text-amber-600 flex-shrink-0" title="Cita privada" />
+                                                            )}
+                                                            {caseInfo ? `${caseInfo.name.split(' ')[0]} - ` : ''}{intervention.title}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <span className="text-sm text-slate-500 flex items-center gap-2 mt-0.5">
                                                     <span className="bg-slate-100 px-2 py-0.5 rounded text-xs flex-shrink-0">
                                                         {intervention.interventionType}
                                                     </span>
-                                                    {intervention.notes && (
+                                                    {canView && intervention.notes && (
                                                         <span className="truncate max-w-[200px] sm:max-w-[300px]">
                                                             {intervention.notes}
                                                         </span>

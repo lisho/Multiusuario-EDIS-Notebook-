@@ -119,6 +119,7 @@ export interface Intervention {
     isAllDay: boolean;
     notes: string;
     isRegistered: boolean; // if it should appear in the notebook
+    isShared?: boolean; // If true (default), visible to teammates. If false, teammates only see 'Ocupado'
     caseId: string | null; // null if it's a general intervention
     status: InterventionStatus;
     cancellationTime?: string; // ISO string

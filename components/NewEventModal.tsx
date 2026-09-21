@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Case, Intervention, InterventionStatus, InterventionType, Professional, ProfessionalRole, User } from '../types';
-import { IoCloseOutline, IoTrashOutline, IoSaveOutline } from 'react-icons/io5';
+import { IoCloseOutline, IoTrashOutline, IoSaveOutline, IoEyeOutline, IoLockClosedOutline } from 'react-icons/io5';
 
 interface NewEventModalProps {
     isOpen: boolean;
@@ -77,9 +77,11 @@ const getInitialState = (itemData: Intervention | (Partial<Intervention> & { has
         isAllDay: false,
         notes: '',
         isRegistered: false,
+        isShared: itemData?.isShared !== undefined ? itemData.isShared : true,
         caseId: null,
         status: InterventionStatus.Planned,
         ...itemData,
+        isShared: itemData?.isShared !== undefined ? itemData.isShared : true,
         start: startIso,
         end: endIso,
         assignedTo: initialAssignedTo,
@@ -328,6 +330,40 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
                                 disabled={!formData.caseId}
                             />
                             <span>Registrar en Cuaderno de Campo</span>
+                        </label>
+                    </div>
+
+                    {/* Team Visibility / Privacy Selector */}
+                    <div className="p-3 bg-slate-50/80 border border-slate-200 rounded-xl">
+                        <label htmlFor="isShared" className="flex items-start gap-2.5 cursor-pointer">
+                            <input 
+                                id="isShared" 
+                                name="isShared" 
+                                type="checkbox" 
+                                checked={formData.isShared !== false} 
+                                onChange={handleChange} 
+                                className="mt-0.5 h-5 w-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer" 
+                            />
+                            <div className="select-none flex-1">
+                                <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-800">
+                                    {formData.isShared !== false ? (
+                                        <>
+                                            <IoEyeOutline className="text-teal-600 text-base" />
+                                            <span>Visible para compañeros del equipo</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <IoLockClosedOutline className="text-amber-600 text-base" />
+                                            <span className="text-amber-800">Privada (solo mostrar "Ocupado" a compañeros)</span>
+                                        </>
+                                    )}
+                                </div>
+                                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 leading-snug">
+                                    {formData.isShared !== false
+                                        ? 'Los compañeros del equipo podrán ver el título, caso y detalles en el calendario compartido.'
+                                        : 'Los compañeros verán el bloque como "Ocupado" con el tipo de intervención, protegiendo los datos confidenciales.'}
+                                </p>
+                            </div>
                         </label>
                     </div>
 

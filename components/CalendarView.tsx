@@ -1,9 +1,19 @@
 import React, { useState, useMemo } from 'react';
-import { Case, Intervention, InterventionType, DashboardView, User, Professional } from '../types';
+import { Case, Intervention, InterventionType, DashboardView, User, Professional, ProfessionalRole } from '../types';
 import NewEventModal from './NewEventModal';
 import CalendarSearchModal from './CalendarSearchModal';
 import TechnicianAvatar from './TechnicianAvatar';
-import { IoAddOutline, IoChevronBackOutline, IoChevronForwardOutline, IoSearchOutline } from 'react-icons/io5';
+import { 
+    IoAddOutline, 
+    IoChevronBackOutline, 
+    IoChevronForwardOutline, 
+    IoSearchOutline,
+    IoPeopleOutline,
+    IoLockClosedOutline,
+    IoEyeOutline,
+    IoInformationCircleOutline,
+    IoCloseOutline
+} from 'react-icons/io5';
 
 interface CalendarViewProps {
     cases: Case[];
@@ -173,13 +183,25 @@ const calculateEventPositions = (events: Intervention[]): PositionedEvent[] => {
 const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions, professionals, onSaveIntervention, onDeleteIntervention, onSelectCaseById, requestConfirmation, currentUser }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view, setView] = useState<CalendarViewType>('week');
+    const [calendarFilter, setCalendarFilter] = useState<'me' | 'all' | string>('me');
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+    const [privateEventInfo, setPrivateEventInfo] = useState<Intervention | null>(null);
     const [modalState, setModalState] = useState<{
         item: Intervention | null;
         initialValues?: Partial<Intervention>;
     }>({ item: null, initialValues: undefined });
     
+    // Check if the current user is authorized to see full details of this event (Title, Case, Notes)
+    const isFullDetailsAuthorized = (event: Intervention): boolean => {
+        if (currentUser.role === 'admin') return true;
+        if (event.createdBy === currentUser.id) return true;
+        if (event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.includes(currentUser.id)) return true;
+        // If it is shared (isShared !== false), colleagues can see full details!
+        if (event.isShared !== false) return true;
+        return false;
+    };
+
     const allInterventions = useMemo(() => {
         const uniqueMap = new Map<string, Intervention>();
         cases.forEach(c => {
@@ -195,9 +217,23 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
             }
         });
         const combined = Array.from(uniqueMap.values());
-        // Filter interventions for the current user (created by user or assigned to user, or admin)
-        return combined.filter(i => i.createdBy === currentUser.id || i.assignedTo?.includes(currentUser.id) || currentUser.role === 'admin');
-    }, [cases, generalInterventions, currentUser]);
+
+        if (calendarFilter === 'me') {
+            return combined.filter(i => 
+                i.createdBy === currentUser.id || 
+                (i.assignedTo && Array.isArray(i.assignedTo) && i.assignedTo.includes(currentUser.id)) ||
+                currentUser.role === 'admin'
+            );
+        } else if (calendarFilter === 'all') {
+            return combined;
+        } else {
+            // Filter by specific professional ID
+            return combined.filter(i => 
+                i.createdBy === calendarFilter || 
+                (i.assignedTo && Array.isArray(i.assignedTo) && i.assignedTo.includes(calendarFilter))
+            );
+        }
+    }, [cases, generalInterventions, currentUser, calendarFilter]);
 
 
     const handlePrev = () => {
@@ -271,18 +307,65 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     };
 
     const EventItem: React.FC<{event: Intervention}> = ({ event }) => {
-        const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
+        const canView = isFullDetailsAuthorized(event);
+        const caseForEvent = canView && event.caseId ? cases.find(c => c.id === event.caseId) : null;
         const style = getInterventionTypeColor(event.interventionType);
         const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
+
+        const handleClick = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            if (canView) {
+                handleOpenModal(event, undefined);
+            } else {
+                setPrivateEventInfo(event);
+            }
+        };
+
+        if (!canView) {
+            return (
+                <div
+                    style={{ ...style, borderLeft: `4px solid ${style.borderLeftColor}` }}
+                    className="text-xs p-1.5 rounded-sm overflow-hidden mb-1 cursor-pointer hover:brightness-95 transition-all shadow-2xs opacity-90"
+                    onClick={handleClick}
+                    title="Cita privada: pulsa para ver disponibilidad horaria"
+                >
+                    <div className="flex items-center justify-between gap-1">
+                        <div className="font-semibold truncate flex-1 min-w-0 flex items-center gap-1 text-slate-700">
+                            <IoLockClosedOutline className="text-amber-600 flex-shrink-0 text-xs" />
+                            <span>Ocupado ({event.interventionType})</span>
+                        </div>
+                        {associatedProfs.length > 0 && (
+                            <div className="flex -space-x-1 flex-shrink-0 items-center pl-1">
+                                {associatedProfs.slice(0, 2).map(prof => (
+                                    <TechnicianAvatar
+                                        key={prof.id}
+                                        professional={prof}
+                                        size="xs"
+                                        prefix="Asignado/a:"
+                                        isCurrentUser={prof.id === currentUser?.id}
+                                        tooltipPosition="top"
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
 
         return (
             <div
                 style={{ ...style, borderLeft: `4px solid ${style.borderLeftColor}` }}
                 className="text-xs p-1.5 rounded-sm overflow-hidden mb-1 cursor-pointer hover:brightness-95 transition-all shadow-2xs"
-                onClick={(e) => { e.stopPropagation(); handleOpenModal(event, undefined); }}
+                onClick={handleClick}
             >
                 <div className="flex items-center justify-between gap-1">
-                    <div className="font-semibold truncate flex-1 min-w-0">
+                    <div className="font-semibold truncate flex-1 min-w-0 flex items-center gap-1">
+                        {event.isShared === false && (
+                            <span title="Cita privada (compañeros solo ven Ocupado)">
+                                <IoLockClosedOutline className="text-amber-600 flex-shrink-0 text-xs" />
+                            </span>
+                        )}
                         {caseForEvent ? (
                             <>
                                 <button
@@ -328,23 +411,95 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     };
     
     const TimedEventItem: React.FC<{event: Intervention}> = ({ event }) => {
-        const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
+        const canView = isFullDetailsAuthorized(event);
+        const caseForEvent = canView && event.caseId ? cases.find(c => c.id === event.caseId) : null;
         const style = getInterventionTypeColor(event.interventionType);
         const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
         const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
+
+        const handleClick = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            if (canView) {
+                handleOpenModal(event, undefined);
+            } else {
+                setPrivateEventInfo(event);
+            }
+        };
+
+        if (!canView) {
+            return (
+                <div
+                    style={{ ...style, borderLeft: `4px solid ${style.borderLeftColor}` }}
+                    className="text-xs p-2 rounded-md overflow-hidden h-full flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm opacity-90 hover:opacity-100 group select-none hover:shadow-lg hover:z-30 hover:h-auto hover:min-h-full hover:ring-2 hover:ring-amber-500/40"
+                    onClick={handleClick}
+                    title="Cita privada: pulsa para ver disponibilidad horaria"
+                >
+                    <div className="space-y-1.5 min-w-0">
+                        {/* Header */}
+                        <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-black/5">
+                            <span className="text-[10px] font-bold tracking-wider opacity-90 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 flex items-center gap-1 truncate">
+                                <IoLockClosedOutline className="text-xs" />
+                                <span>{event.interventionType}</span>
+                            </span>
+
+                            {associatedProfs.length > 0 && (
+                                <div className="flex -space-x-1.5 flex-shrink-0 items-center pl-1">
+                                    {associatedProfs.slice(0, 3).map(prof => (
+                                        <TechnicianAvatar
+                                            key={prof.id}
+                                            professional={prof}
+                                            size="xs"
+                                            prefix="Técnico:"
+                                            isCurrentUser={prof.id === currentUser?.id}
+                                            tooltipPosition="top"
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Masked Title */}
+                        <div className="font-bold text-[13px] text-slate-800 flex items-center gap-1.5 mt-0.5">
+                            <span className="text-amber-800">Ocupado</span>
+                            <span className="text-xs font-normal text-slate-500">({event.interventionType})</span>
+                        </div>
+
+                        {/* Hora */}
+                        <div className="pt-0.5">
+                            {!event.isAllDay ? (
+                                <span className="inline-block bg-white/90 px-1.5 py-0.5 rounded border border-black/5 font-semibold text-slate-700 text-[11px]">
+                                    {timeFormat.format(new Date(event.start))} - {timeFormat.format(new Date(event.end))}
+                                </span>
+                            ) : (
+                                <span className="inline-block bg-white/90 px-1.5 py-0.5 rounded border border-black/5 font-semibold text-slate-600 text-[10px]">
+                                    Todo el día
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
 
         return (
             <div
                 style={{ ...style, borderLeft: `4px solid ${style.borderLeftColor}` }}
                 className="text-xs p-2 rounded-md overflow-hidden h-full flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm group select-none hover:overflow-visible hover:shadow-xl hover:z-30 hover:h-auto hover:min-h-full hover:ring-2 hover:ring-teal-500/40"
-                onClick={(e) => { e.stopPropagation(); handleOpenModal(event, undefined); }}
+                onClick={handleClick}
             >
                 <div className="space-y-1.5 min-w-0">
                     {/* Header: Técnicos asignados en la parte superior derecha + Badge de Tipo de Cita */}
                     <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-black/5">
-                        <span className="text-[10px] uppercase font-bold tracking-wider opacity-85 px-1.5 py-0.5 rounded bg-black/5 truncate">
-                            {event.interventionType}
-                        </span>
+                        <div className="flex items-center gap-1 min-w-0">
+                            <span className="text-[10px] uppercase font-bold tracking-wider opacity-85 px-1.5 py-0.5 rounded bg-black/5 truncate">
+                                {event.interventionType}
+                            </span>
+                            {event.isShared === false && (
+                                <span className="p-0.5 bg-amber-100 text-amber-800 rounded text-[10px] flex items-center" title="Cita privada (solo tú ves los detalles)">
+                                    <IoLockClosedOutline />
+                                </span>
+                            )}
+                        </div>
 
                         {associatedProfs.length > 0 && (
                             <div className="flex -space-x-1.5 flex-shrink-0 items-center pl-1">
@@ -432,41 +587,128 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
             }
         };
 
-        const navButtonStyle = "px-3 py-1.5 text-sm font-semibold rounded-md transition-colors focus:outline-none";
+        const navButtonStyle = "px-3 py-1.5 text-sm font-semibold rounded-md transition-colors focus:outline-none cursor-pointer";
         const activeStyle = "bg-white text-teal-700 shadow-sm";
         const inactiveStyle = "bg-transparent text-slate-600 hover:bg-white/60";
 
+        // Filter list of technicians for the selector
+        const techniciansList = professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+
         return (
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-800 capitalize text-center sm:text-left">
-                    {getTitle()}
-                </h2>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                     <button
-                        onClick={() => setIsSearchModalOpen(true)}
-                        className="bg-slate-100 text-slate-600 w-10 h-10 rounded-lg hover:bg-slate-200 hover:text-slate-800 flex items-center justify-center transition-colors"
-                        aria-label="Buscar intervenciones"
-                        title="Buscar intervenciones"
-                    >
-                        <IoSearchOutline className="text-xl" />
-                    </button>
-                     <button
-                        onClick={() => handleOpenModal(null, { start: currentDate.toISOString(), isDayOnly: true } as any)}
-                        className="bg-teal-600 text-white w-10 h-10 rounded-lg hover:bg-teal-700 flex items-center justify-center transition-colors"
-                        aria-label="Añadir nueva intervención"
-                        title="Añadir nueva intervención"
-                    >
-                        <IoAddOutline className="text-2xl" />
-                    </button>
-                    <div className="flex items-center border border-slate-300 rounded-lg">
-                        <button onClick={handlePrev} className="p-2 text-slate-600 hover:bg-slate-100 rounded-l-lg"><IoChevronBackOutline /></button>
-                        <button onClick={handleToday} className="px-4 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 border-x border-slate-300">Hoy</button>
-                        <button onClick={handleNext} className="p-2 text-slate-600 hover:bg-slate-100 rounded-r-lg"><IoChevronForwardOutline /></button>
+            <div className="space-y-3 mb-6">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <h2 className="text-xl sm:text-2xl font-bold text-slate-800 capitalize text-center sm:text-left">
+                        {getTitle()}
+                    </h2>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                         <button
+                            onClick={() => setIsSearchModalOpen(true)}
+                            className="bg-slate-100 text-slate-600 w-10 h-10 rounded-lg hover:bg-slate-200 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+                            aria-label="Buscar intervenciones"
+                            title="Buscar intervenciones"
+                        >
+                            <IoSearchOutline className="text-xl" />
+                        </button>
+                         <button
+                            onClick={() => handleOpenModal(null, { start: currentDate.toISOString(), isDayOnly: true } as any)}
+                            className="bg-teal-600 text-white w-10 h-10 rounded-lg hover:bg-teal-700 flex items-center justify-center transition-colors cursor-pointer"
+                            aria-label="Añadir nueva intervención"
+                            title="Añadir nueva intervención"
+                        >
+                            <IoAddOutline className="text-2xl" />
+                        </button>
+                        <div className="flex items-center border border-slate-300 rounded-lg bg-white shadow-2xs">
+                            <button onClick={handlePrev} className="p-2 text-slate-600 hover:bg-slate-100 rounded-l-lg cursor-pointer"><IoChevronBackOutline /></button>
+                            <button onClick={handleToday} className="px-4 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 border-x border-slate-300 cursor-pointer">Hoy</button>
+                            <button onClick={handleNext} className="p-2 text-slate-600 hover:bg-slate-100 rounded-r-lg cursor-pointer"><IoChevronForwardOutline /></button>
+                        </div>
+                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                            <button onClick={() => setView('month')} className={`${navButtonStyle} ${view === 'month' ? activeStyle : inactiveStyle}`}>Mes</button>
+                            <button onClick={() => setView('week')} className={`${navButtonStyle} ${view === 'week' ? activeStyle : inactiveStyle}`}>Semana</button>
+                            <button onClick={() => setView('day')} className={`${navButtonStyle} ${view === 'day' ? activeStyle : inactiveStyle}`}>Día</button>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-                        <button onClick={() => setView('month')} className={`${navButtonStyle} ${view === 'month' ? activeStyle : inactiveStyle}`}>Mes</button>
-                        <button onClick={() => setView('week')} className={`${navButtonStyle} ${view === 'week' ? activeStyle : inactiveStyle}`}>Semana</button>
-                        <button onClick={() => setView('day')} className={`${navButtonStyle} ${view === 'day' ? activeStyle : inactiveStyle}`}>Día</button>
+                </div>
+
+                {/* Team Visibility & Colleague Filter Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                            <IoPeopleOutline className="text-sm text-teal-700" />
+                            <span>Agenda:</span>
+                        </span>
+                        
+                        <div className="inline-flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs">
+                            <button
+                                type="button"
+                                onClick={() => setCalendarFilter('me')}
+                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                                    calendarFilter === 'me'
+                                        ? 'bg-teal-700 text-white shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                }`}
+                            >
+                                Mi agenda
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCalendarFilter('all')}
+                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                                    calendarFilter === 'all'
+                                        ? 'bg-teal-700 text-white shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                }`}
+                            >
+                                <span>Todo el equipo</span>
+                            </button>
+                        </div>
+
+                        {/* Dropdown for specific colleague */}
+                        <div className="flex items-center gap-1.5">
+                            <select
+                                value={calendarFilter !== 'me' && calendarFilter !== 'all' ? calendarFilter : ''}
+                                onChange={(e) => {
+                                    if (e.target.value) {
+                                        setCalendarFilter(e.target.value);
+                                    }
+                                }}
+                                className={`text-xs py-1 px-2.5 rounded-lg border transition-colors cursor-pointer ${
+                                    calendarFilter !== 'me' && calendarFilter !== 'all'
+                                        ? 'bg-teal-50 border-teal-400 text-teal-900 font-bold'
+                                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                                }`}
+                            >
+                                <option value="" disabled={calendarFilter === 'me' || calendarFilter === 'all'}>
+                                    {calendarFilter !== 'me' && calendarFilter !== 'all' ? 'Ver compañero:' : 'Filtrar por compañero...'}
+                                </option>
+                                {techniciansList.map(prof => (
+                                    <option key={prof.id} value={prof.id}>
+                                        {prof.name} {prof.id === currentUser?.id ? '(Tú)' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            {calendarFilter !== 'me' && calendarFilter !== 'all' && (
+                                <button
+                                    type="button"
+                                    onClick={() => setCalendarFilter('me')}
+                                    className="text-xs text-teal-700 hover:text-teal-900 font-bold hover:underline cursor-pointer"
+                                >
+                                    ✕ Restablecer
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Privacy Legend */}
+                    <div className="flex items-center gap-3 text-[11px] text-slate-500 self-end sm:self-auto">
+                        <span className="flex items-center gap-1 font-medium">
+                            <span className="w-2 h-2 rounded-full bg-teal-500"></span>
+                            <span>Visible para equipo</span>
+                        </span>
+                        <span className="flex items-center gap-1 font-medium">
+                            <IoLockClosedOutline className="text-amber-600 text-xs" />
+                            <span>Privada ("Ocupado")</span>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -745,8 +987,93 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 cases={cases}
                 professionals={professionals}
                 currentUser={currentUser}
-                onSelectIntervention={(intervention) => handleOpenModal(intervention, undefined)}
+                onSelectIntervention={(intervention) => {
+                    if (isFullDetailsAuthorized(intervention)) {
+                        handleOpenModal(intervention, undefined);
+                    } else {
+                        setPrivateEventInfo(intervention);
+                    }
+                }}
             />
+
+            {/* Private Event Info Modal */}
+            {privateEventInfo && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in duration-200">
+                        <div className="bg-gradient-to-r from-amber-600 to-amber-700 px-6 py-4 text-white flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <IoLockClosedOutline className="text-xl" />
+                                <h3 className="font-bold text-lg">Cita privada</h3>
+                            </div>
+                            <button
+                                onClick={() => setPrivateEventInfo(null)}
+                                className="p-1 rounded-full hover:bg-white/20 text-white transition-colors cursor-pointer"
+                            >
+                                <IoCloseOutline className="text-2xl" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4 text-slate-700 text-sm">
+                            <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3.5 flex items-start gap-3">
+                                <IoInformationCircleOutline className="text-amber-700 text-xl flex-shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-900 leading-relaxed">
+                                    Esta cita ha sido marcada como no compartida por su creador/a. Solo se muestra la disponibilidad horaria y el tipo de intervención.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2.5 pt-1">
+                                <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                                    <span className="text-slate-500 font-medium">Estado:</span>
+                                    <span className="font-bold text-amber-800 bg-amber-100/70 px-2.5 py-0.5 rounded-full text-xs">
+                                        Ocupado
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                                    <span className="text-slate-500 font-medium">Tipo de intervención:</span>
+                                    <span className="font-semibold text-slate-800">
+                                        {privateEventInfo.interventionType}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                                    <span className="text-slate-500 font-medium">Fecha:</span>
+                                    <span className="font-semibold text-slate-800">
+                                        {new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(privateEventInfo.start))}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                                    <span className="text-slate-500 font-medium">Horario:</span>
+                                    <span className="font-semibold text-slate-800">
+                                        {privateEventInfo.isAllDay
+                                            ? 'Todo el día'
+                                            : `${new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(new Date(privateEventInfo.start))} - ${new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(new Date(privateEventInfo.end))}`}
+                                    </span>
+                                </div>
+                                {getAssociatedProfessionals(privateEventInfo, null).length > 0 && (
+                                    <div className="flex items-center justify-between py-1.5">
+                                        <span className="text-slate-500 font-medium">Técnico/s:</span>
+                                        <div className="flex items-center gap-1.5">
+                                            {getAssociatedProfessionals(privateEventInfo, null).map(p => (
+                                                <span key={p.id} className="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-xs font-semibold text-slate-700">
+                                                    {p.name}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="pt-3 flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setPrivateEventInfo(null)}
+                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs transition-colors cursor-pointer"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
