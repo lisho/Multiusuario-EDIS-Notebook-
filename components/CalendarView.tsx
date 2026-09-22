@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Case, Intervention, InterventionType, DashboardView, User, Professional, ProfessionalRole } from '../types';
 import NewEventModal from './NewEventModal';
 import CalendarSearchModal from './CalendarSearchModal';
@@ -11,8 +11,16 @@ import {
     IoPeopleOutline,
     IoLockClosedOutline,
     IoEyeOutline,
+    IoEyeOffOutline,
+    IoExpandOutline,
+    IoContractOutline,
     IoInformationCircleOutline,
-    IoCloseOutline
+    IoCloseOutline,
+    IoCheckmarkOutline,
+    IoFilterOutline,
+    IoPersonAddOutline,
+    IoChevronDownOutline,
+    IoCloseCircleOutline
 } from 'react-icons/io5';
 
 interface CalendarViewProps {
@@ -183,7 +191,12 @@ const calculateEventPositions = (events: Intervention[]): PositionedEvent[] => {
 const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions, professionals, onSaveIntervention, onDeleteIntervention, onSelectCaseById, requestConfirmation, currentUser }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view, setView] = useState<CalendarViewType>('week');
-    const [calendarFilter, setCalendarFilter] = useState<'me' | 'all' | string>('me');
+    const [collapseWeekends, setCollapseWeekends] = useState<boolean>(true);
+    const [calendarFilter, setCalendarFilter] = useState<'me' | 'all' | 'custom'>('me');
+    const [selectedColleagueIds, setSelectedColleagueIds] = useState<string[]>([currentUser.id]);
+    const [isMultiSelectOpen, setIsMultiSelectOpen] = useState<boolean>(false);
+    const [colleagueSearchQuery, setColleagueSearchQuery] = useState<string>('');
+    const multiSelectRef = useRef<HTMLDivElement>(null);
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
     const [privateEventInfo, setPrivateEventInfo] = useState<Intervention | null>(null);
@@ -192,6 +205,21 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         initialValues?: Partial<Intervention>;
     }>({ item: null, initialValues: undefined });
     
+    // Close multi-select popover when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (multiSelectRef.current && !multiSelectRef.current.contains(event.target as Node)) {
+                setIsMultiSelectOpen(false);
+            }
+        };
+        if (isMultiSelectOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isMultiSelectOpen]);
+
     // Check if the current user is authorized to see full details of this event (Title, Case, Notes)
     const isFullDetailsAuthorized = (event: Intervention): boolean => {
         if (currentUser.role === 'admin') return true;
@@ -200,6 +228,62 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         // If it is shared (isShared !== false), colleagues can see full details!
         if (event.isShared !== false) return true;
         return false;
+    };
+
+    const edisTechnicians = useMemo(() => {
+        return professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+    }, [professionals]);
+
+    const toggleColleague = (profId: string) => {
+        let next: string[];
+        if (calendarFilter !== 'custom') {
+            if (calendarFilter === 'me') {
+                if (profId === currentUser.id) {
+                    next = [];
+                } else {
+                    next = [currentUser.id, profId];
+                }
+            } else {
+                next = [profId];
+            }
+        } else {
+            if (selectedColleagueIds.includes(profId)) {
+                next = selectedColleagueIds.filter(id => id !== profId);
+            } else {
+                next = [...selectedColleagueIds, profId];
+            }
+        }
+        setSelectedColleagueIds(next);
+        setCalendarFilter('custom');
+    };
+
+    const selectOnlyColleague = (profId: string) => {
+        setSelectedColleagueIds([profId]);
+        setCalendarFilter('custom');
+        setIsMultiSelectOpen(false);
+    };
+
+    const selectMeAndColleague = (profId: string) => {
+        const newSet = new Set([currentUser.id, profId]);
+        setSelectedColleagueIds(Array.from(newSet));
+        setCalendarFilter('custom');
+        setIsMultiSelectOpen(false);
+    };
+
+    const selectAllTechnicians = () => {
+        setSelectedColleagueIds(edisTechnicians.map(p => p.id));
+        setCalendarFilter('custom');
+    };
+
+    const clearSelectedColleagues = () => {
+        setSelectedColleagueIds([]);
+        setCalendarFilter('custom');
+    };
+
+    const resetToMe = () => {
+        setSelectedColleagueIds([currentUser.id]);
+        setCalendarFilter('me');
+        setIsMultiSelectOpen(false);
     };
 
     const allInterventions = useMemo(() => {
@@ -227,13 +311,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         } else if (calendarFilter === 'all') {
             return combined;
         } else {
-            // Filter by specific professional ID
-            return combined.filter(i => 
-                i.createdBy === calendarFilter || 
-                (i.assignedTo && Array.isArray(i.assignedTo) && i.assignedTo.includes(calendarFilter))
-            );
+            // Filter by multiple selected professional IDs
+            if (selectedColleagueIds.length === 0) return [];
+            return combined.filter(i => {
+                const isCreatedBy = selectedColleagueIds.includes(i.createdBy);
+                const isAssignedTo = i.assignedTo && Array.isArray(i.assignedTo) && i.assignedTo.some(id => selectedColleagueIds.includes(id));
+                return isCreatedBy || isAssignedTo;
+            });
         }
-    }, [cases, generalInterventions, currentUser, calendarFilter]);
+    }, [cases, generalInterventions, currentUser, calendarFilter, selectedColleagueIds]);
 
 
     const handlePrev = () => {
@@ -262,7 +348,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     };
     
     const handleOpenModal = (item: Intervention | null, initialValues?: Partial<Intervention>) => {
-        setModalState({ item, initialValues });
+        let enhancedInitialValues = initialValues;
+        if (!item && calendarFilter === 'custom' && selectedColleagueIds.length > 0) {
+            enhancedInitialValues = {
+                assignedTo: selectedColleagueIds,
+                ...initialValues,
+            };
+        }
+        setModalState({ item, initialValues: enhancedInitialValues });
         setIsEventModalOpen(true);
     };
 
@@ -280,6 +373,47 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
             return eventStart.toDateString() === day.toDateString();
         }).sort((a,b) => new Date(a.start).getTime() - new Date(b.start).getTime());
     };
+
+    // Calculate count of events on Saturday and Sunday for the current view period
+    const currentPeriodWeekendEvents = useMemo(() => {
+        if (view === 'day') return { total: 0 };
+        if (view === 'week') {
+            const startOfWeek = new Date(currentDate);
+            startOfWeek.setDate(startOfWeek.getDate() - (startOfWeek.getDay() + 6) % 7);
+            const sat = new Date(startOfWeek);
+            sat.setDate(sat.getDate() + 5);
+            const sun = new Date(startOfWeek);
+            sun.setDate(sun.getDate() + 6);
+            const satEvents = getEventsForDay(sat);
+            const sunEvents = getEventsForDay(sun);
+            return {
+                satCount: satEvents.length,
+                sunCount: sunEvents.length,
+                total: satEvents.length + sunEvents.length
+            };
+        }
+        if (view === 'month') {
+            const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+            const startDate = new Date(monthStart);
+            const startDay = (monthStart.getDay() + 6) % 7;
+            startDate.setDate(startDate.getDate() - startDay);
+            let total = 0;
+            let day = new Date(startDate);
+            for (let i = 0; i < 42; i++) {
+                const dayOfWeek = (day.getDay() + 6) % 7;
+                if (dayOfWeek >= 5 && day.getMonth() === currentDate.getMonth()) {
+                    total += getEventsForDay(day).length;
+                }
+                day.setDate(day.getDate() + 1);
+            }
+            return {
+                satCount: 0,
+                sunCount: 0,
+                total
+            };
+        }
+        return { total: 0 };
+    }, [currentDate, view, allInterventions]);
 
     const getAssociatedProfessionals = (event: Intervention, caseForEvent: Case | null | undefined): Professional[] => {
         const found = new Map<string, Professional>();
@@ -563,6 +697,94 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         );
     };
 
+    // Compact Indicator Event Item for Collapsed Saturday/Sunday columns
+    const CollapsedWeekendEventItem: React.FC<{event: Intervention}> = ({ event }) => {
+        const canView = isFullDetailsAuthorized(event);
+        const caseForEvent = canView && event.caseId ? cases.find(c => c.id === event.caseId) : null;
+        const style = getInterventionTypeColor(event.interventionType);
+        const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
+
+        const handleClick = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            if (canView) {
+                handleOpenModal(event, undefined);
+            } else {
+                setPrivateEventInfo(event);
+            }
+        };
+
+        const startTimeStr = timeFormat.format(new Date(event.start));
+        const endTimeStr = timeFormat.format(new Date(event.end));
+
+        return (
+            <div
+                style={{ ...style, borderLeft: `3px solid ${style.borderLeftColor}` }}
+                className="text-[10px] p-1 rounded overflow-hidden h-full flex flex-col items-center justify-center cursor-pointer transition-all shadow-xs group/collapsed relative hover:z-50 hover:ring-2 hover:ring-teal-500 hover:shadow-lg"
+                onClick={handleClick}
+            >
+                <div className="font-bold text-[9px] text-slate-800 leading-none truncate w-full text-center">
+                    {startTimeStr}
+                </div>
+                {!canView || event.isShared === false ? (
+                    <IoLockClosedOutline className="text-[10px] text-amber-700 mt-0.5" />
+                ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-600 mt-0.5"></span>
+                )}
+
+                {/* Floating Popover on Hover */}
+                <div className="hidden group-hover/collapsed:flex flex-col absolute right-0 top-full mt-1 z-50 w-56 bg-white rounded-lg shadow-xl border border-slate-200 p-2.5 text-left text-xs pointer-events-auto animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between gap-1 pb-1 border-b border-slate-100 mb-1.5">
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 truncate">
+                            {event.interventionType}
+                        </span>
+                        <span className="text-[10px] font-semibold text-slate-500">
+                            {startTimeStr} - {endTimeStr}
+                        </span>
+                    </div>
+
+                    {!canView ? (
+                        <div className="font-bold text-slate-800 flex items-center gap-1 text-amber-800">
+                            <IoLockClosedOutline className="text-xs" />
+                            <span>Ocupado ({event.interventionType})</span>
+                        </div>
+                    ) : (
+                        <>
+                            {caseForEvent && (
+                                <div className="font-bold text-teal-800 text-xs truncate">
+                                    {caseForEvent.name}
+                                </div>
+                            )}
+                            <div className="font-semibold text-slate-800 line-clamp-2">
+                                {event.title}
+                            </div>
+                        </>
+                    )}
+
+                    {associatedProfs.length > 0 && (
+                        <div className="mt-2 pt-1 border-t border-slate-100 flex items-center gap-1">
+                            <span className="text-[10px] text-slate-400">Técnico/s:</span>
+                            <div className="flex -space-x-1">
+                                {associatedProfs.map(p => (
+                                    <TechnicianAvatar
+                                        key={p.id}
+                                        professional={p}
+                                        size="xs"
+                                        prefix="Asignado:"
+                                        isCurrentUser={p.id === currentUser?.id}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    <div className="mt-1.5 text-[9px] text-teal-600 font-medium text-right">
+                        Clic para abrir cita →
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     
     const renderHeader = () => {
         const monthYearFormat = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' });
@@ -627,89 +849,332 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                             <button onClick={() => setView('week')} className={`${navButtonStyle} ${view === 'week' ? activeStyle : inactiveStyle}`}>Semana</button>
                             <button onClick={() => setView('day')} className={`${navButtonStyle} ${view === 'day' ? activeStyle : inactiveStyle}`}>Día</button>
                         </div>
+
+                        {view !== 'day' && (
+                            <button
+                                type="button"
+                                onClick={() => setCollapseWeekends(!collapseWeekends)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+                                    collapseWeekends
+                                        ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700 shadow-2xs'
+                                        : 'bg-teal-50 hover:bg-teal-100 border-teal-300 text-teal-800 font-bold'
+                                }`}
+                                title={collapseWeekends ? "Mostrar sábado y domingo completos" : "Colapsar fin de semana para ampliar de lunes a viernes"}
+                            >
+                                {collapseWeekends ? (
+                                    <>
+                                        <IoExpandOutline className="text-sm text-teal-600" />
+                                        <span>Mostrar Sáb/Dom</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <IoContractOutline className="text-sm text-slate-500" />
+                                        <span>Colapsar Sáb/Dom</span>
+                                    </>
+                                )}
+                                {currentPeriodWeekendEvents.total > 0 && collapseWeekends && (
+                                    <span 
+                                        className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[10px] font-bold rounded-full bg-amber-500 text-white shadow-2xs animate-pulse"
+                                        title={`${currentPeriodWeekendEvents.total} cita(s) en fin de semana`}
+                                    >
+                                        {currentPeriodWeekendEvents.total}
+                                    </span>
+                                )}
+                            </button>
+                        )}
                     </div>
                 </div>
 
-                {/* Team Visibility & Colleague Filter Bar */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                            <IoPeopleOutline className="text-sm text-teal-700" />
-                            <span>Agenda:</span>
-                        </span>
-                        
-                        <div className="inline-flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs">
-                            <button
-                                type="button"
-                                onClick={() => setCalendarFilter('me')}
-                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
-                                    calendarFilter === 'me'
-                                        ? 'bg-teal-700 text-white shadow-xs'
-                                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                            >
-                                Mi agenda
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setCalendarFilter('all')}
-                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
-                                    calendarFilter === 'all'
-                                        ? 'bg-teal-700 text-white shadow-xs'
-                                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                            >
-                                <span>Todo el equipo</span>
-                            </button>
-                        </div>
-
-                        {/* Dropdown for specific colleague */}
-                        <div className="flex items-center gap-1.5">
-                            <select
-                                value={calendarFilter !== 'me' && calendarFilter !== 'all' ? calendarFilter : ''}
-                                onChange={(e) => {
-                                    if (e.target.value) {
-                                        setCalendarFilter(e.target.value);
-                                    }
-                                }}
-                                className={`text-xs py-1 px-2.5 rounded-lg border transition-colors cursor-pointer ${
-                                    calendarFilter !== 'me' && calendarFilter !== 'all'
-                                        ? 'bg-teal-50 border-teal-400 text-teal-900 font-bold'
-                                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                                }`}
-                            >
-                                <option value="" disabled={calendarFilter === 'me' || calendarFilter === 'all'}>
-                                    {calendarFilter !== 'me' && calendarFilter !== 'all' ? 'Ver compañero:' : 'Filtrar por compañero...'}
-                                </option>
-                                {techniciansList.map(prof => (
-                                    <option key={prof.id} value={prof.id}>
-                                        {prof.name} {prof.id === currentUser?.id ? '(Tú)' : ''}
-                                    </option>
-                                ))}
-                            </select>
-                            {calendarFilter !== 'me' && calendarFilter !== 'all' && (
+                {/* Team Visibility & Multi-Colleague Filter Bar */}
+                <div className="flex flex-col gap-2.5 bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                <IoPeopleOutline className="text-sm text-teal-700" />
+                                <span>Agenda:</span>
+                            </span>
+                            
+                            <div className="inline-flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs">
                                 <button
                                     type="button"
-                                    onClick={() => setCalendarFilter('me')}
-                                    className="text-xs text-teal-700 hover:text-teal-900 font-bold hover:underline cursor-pointer"
+                                    onClick={resetToMe}
+                                    className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                                        calendarFilter === 'me'
+                                            ? 'bg-teal-700 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                    }`}
                                 >
-                                    ✕ Restablecer
+                                    Mi agenda
                                 </button>
-                            )}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCalendarFilter('all');
+                                        setIsMultiSelectOpen(false);
+                                    }}
+                                    className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                                        calendarFilter === 'all'
+                                            ? 'bg-teal-700 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                    }`}
+                                >
+                                    <span>Todo el equipo</span>
+                                </button>
+                            </div>
+
+                            {/* Multi-Colleague Selector Button & Dropdown */}
+                            <div className="relative" ref={multiSelectRef}>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsMultiSelectOpen(!isMultiSelectOpen)}
+                                    className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer shadow-2xs ${
+                                        calendarFilter === 'custom'
+                                            ? 'bg-teal-700 text-white border-teal-700 shadow-xs'
+                                            : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                                    }`}
+                                    title="Seleccionar varias compañeras/os para ver agendas simultáneas"
+                                >
+                                    <IoFilterOutline className={`text-sm ${calendarFilter === 'custom' ? 'text-white' : 'text-teal-700'}`} />
+                                    <span>
+                                        {calendarFilter === 'custom' 
+                                            ? `Selección conjunta (${selectedColleagueIds.length})` 
+                                            : 'Seleccionar compañeros...'}
+                                    </span>
+                                    <IoChevronDownOutline className={`text-xs transition-transform duration-200 ${isMultiSelectOpen ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                {/* Multi-Select Dropdown Popover */}
+                                {isMultiSelectOpen && (
+                                    <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 z-50 w-80 sm:w-96 bg-white rounded-xl shadow-xl border border-slate-200 p-3 text-left animate-in fade-in zoom-in-95 duration-150">
+                                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                            <div>
+                                                <h4 className="text-xs font-bold text-slate-800">
+                                                    Técnicos/as EDIS
+                                                </h4>
+                                                <p className="text-[11px] text-slate-500">
+                                                    Selecciona los técnicos de EDIS para ver agendas simultáneas y coordinar actuaciones
+                                                </p>
+                                            </div>
+                                            <button 
+                                                onClick={() => setIsMultiSelectOpen(false)}
+                                                className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 cursor-pointer"
+                                                title="Cerrar"
+                                            >
+                                                <IoCloseOutline className="text-base" />
+                                            </button>
+                                        </div>
+
+                                        {/* Quick Action Shortcuts */}
+                                        <div className="flex items-center gap-1.5 my-2 flex-wrap">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedColleagueIds([currentUser.id]);
+                                                    setCalendarFilter('custom');
+                                                }}
+                                                className="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-slate-100 text-slate-700 hover:bg-teal-50 hover:text-teal-800 transition-colors cursor-pointer"
+                                            >
+                                                Solo yo
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={selectAllTechnicians}
+                                                className="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-slate-100 text-slate-700 hover:bg-teal-50 hover:text-teal-800 transition-colors cursor-pointer"
+                                            >
+                                                Seleccionar todos los EDIS
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={clearSelectedColleagues}
+                                                className="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
+                                            >
+                                                Desmarcar todos
+                                            </button>
+                                        </div>
+
+                                        {/* Search Filter Box */}
+                                        <div className="relative mb-2">
+                                            <IoSearchOutline className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
+                                            <input
+                                                type="text"
+                                                placeholder="Buscar técnico/a EDIS..."
+                                                value={colleagueSearchQuery}
+                                                onChange={(e) => setColleagueSearchQuery(e.target.value)}
+                                                className="w-full text-xs pl-7 pr-7 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-teal-500 focus:outline-none transition-colors"
+                                            />
+                                            {colleagueSearchQuery && (
+                                                <button
+                                                    onClick={() => setColleagueSearchQuery('')}
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                                                >
+                                                    <IoCloseOutline />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Colleagues List */}
+                                        <div className="max-h-56 overflow-y-auto space-y-1 pr-1 divide-y divide-slate-50">
+                                            {edisTechnicians
+                                                .filter(p => {
+                                                    if (!colleagueSearchQuery.trim()) return true;
+                                                    const q = colleagueSearchQuery.toLowerCase();
+                                                    return p.name.toLowerCase().includes(q) || (p.role && p.role.toLowerCase().includes(q));
+                                                })
+                                                .map(prof => {
+                                                    const isChecked = calendarFilter === 'custom' 
+                                                        ? selectedColleagueIds.includes(prof.id)
+                                                        : (calendarFilter === 'me' ? prof.id === currentUser.id : true);
+                                                    const isCurrentUser = prof.id === currentUser?.id;
+
+                                                    return (
+                                                        <div
+                                                            key={prof.id}
+                                                            className={`flex items-center justify-between p-1.5 rounded-lg transition-colors cursor-pointer group ${
+                                                                isChecked 
+                                                                    ? 'bg-teal-50/80 border border-teal-200/60' 
+                                                                    : 'hover:bg-slate-50 border border-transparent'
+                                                            }`}
+                                                            onClick={() => toggleColleague(prof.id)}
+                                                        >
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    onChange={() => {}} // handled by parent onClick
+                                                                    className="w-3.5 h-3.5 text-teal-600 rounded border-slate-300 focus:ring-teal-500 pointer-events-none"
+                                                                />
+                                                                <TechnicianAvatar professional={prof} size="xs" />
+                                                                <div className="min-w-0">
+                                                                    <div className="text-xs font-semibold text-slate-800 flex items-center gap-1 truncate">
+                                                                        <span>{prof.name}</span>
+                                                                        {isCurrentUser && (
+                                                                            <span className="text-[10px] bg-teal-100 text-teal-800 font-bold px-1 rounded">
+                                                                                Tú
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="text-[10px] text-slate-500 truncate">
+                                                                        {prof.role}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                {!isCurrentUser && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            selectMeAndColleague(prof.id);
+                                                                        }}
+                                                                        className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-teal-100 hover:bg-teal-200 text-teal-800 cursor-pointer"
+                                                                        title={`Ver mi agenda + ${prof.name}`}
+                                                                    >
+                                                                        Yo + {prof.name.split(' ')[0]}
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        selectOnlyColleague(prof.id);
+                                                                    }}
+                                                                    className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-slate-200 hover:bg-slate-300 text-slate-700 cursor-pointer"
+                                                                    title={`Ver solo a ${prof.name}`}
+                                                                >
+                                                                    Solo
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                        </div>
+
+                                        {/* Footer */}
+                                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                                            <span className="text-[11px] font-medium text-slate-500">
+                                                {selectedColleagueIds.length} seleccionado(s)
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsMultiSelectOpen(false)}
+                                                className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer shadow-2xs"
+                                            >
+                                                Aplicar selección
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Privacy Legend */}
+                        <div className="flex items-center gap-3 text-[11px] text-slate-500 self-end sm:self-auto">
+                            <span className="flex items-center gap-1 font-medium">
+                                <span className="w-2 h-2 rounded-full bg-teal-500"></span>
+                                <span>Visible para equipo</span>
+                            </span>
+                            <span className="flex items-center gap-1 font-medium">
+                                <IoLockClosedOutline className="text-amber-600 text-xs" />
+                                <span>Privada ("Ocupado")</span>
+                            </span>
                         </div>
                     </div>
 
-                    {/* Privacy Legend */}
-                    <div className="flex items-center gap-3 text-[11px] text-slate-500 self-end sm:self-auto">
-                        <span className="flex items-center gap-1 font-medium">
-                            <span className="w-2 h-2 rounded-full bg-teal-500"></span>
-                            <span>Visible para equipo</span>
-                        </span>
-                        <span className="flex items-center gap-1 font-medium">
-                            <IoLockClosedOutline className="text-amber-600 text-xs" />
-                            <span>Privada ("Ocupado")</span>
-                        </span>
-                    </div>
+                    {/* Active Multi-Colleague Joint Planning Banner */}
+                    {calendarFilter === 'custom' && (
+                        <div className="mt-1 pt-2 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[11px] font-bold text-teal-900 flex items-center gap-1 shrink-0">
+                                    <IoPeopleOutline className="text-teal-700" />
+                                    <span>Planificación conjunta ({selectedColleagueIds.length}):</span>
+                                </span>
+                                {selectedColleagueIds.length === 0 ? (
+                                    <span className="text-xs italic text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                        Ningún compañero seleccionado. Haz clic en "Añadir compañeros"
+                                    </span>
+                                ) : (
+                                    selectedColleagueIds.map(id => {
+                                        const prof = professionals.find(p => p.id === id);
+                                        if (!prof) return null;
+                                        return (
+                                            <span 
+                                                key={id}
+                                                className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-full text-xs font-semibold bg-white border border-teal-300 text-teal-950 shadow-2xs"
+                                            >
+                                                <TechnicianAvatar professional={prof} size="xs" />
+                                                <span>{prof.name} {prof.id === currentUser?.id ? '(Tú)' : ''}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleColleague(id)}
+                                                    className="text-slate-400 hover:text-rose-600 ml-0.5 transition-colors cursor-pointer"
+                                                    title={`Quitar a ${prof.name}`}
+                                                >
+                                                    ✕
+                                                </button>
+                                            </span>
+                                        );
+                                    })
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setIsMultiSelectOpen(true)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-teal-800 hover:text-teal-950 bg-teal-100 hover:bg-teal-200 rounded-full transition-colors cursor-pointer shadow-2xs"
+                                >
+                                    <IoPersonAddOutline className="text-xs" />
+                                    <span>+ Añadir</span>
+                                </button>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={resetToMe}
+                                className="text-xs text-slate-500 hover:text-slate-800 font-semibold hover:underline self-end sm:self-auto cursor-pointer"
+                            >
+                                ✕ Volver a mi agenda
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -724,23 +1189,191 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         const rows = [];
         let day = new Date(startDate);
         
+        const gridTemplateColumns = collapseWeekends 
+            ? 'repeat(5, minmax(0, 1fr)) 46px 46px' 
+            : 'repeat(7, minmax(0, 1fr))';
+
         for (let w = 0; w < 6; w++) {
             let days = [];
             for (let i = 0; i < 7; i++) {
                 const cloneDay = new Date(day);
                 const isCurrentMonth = cloneDay.getMonth() === currentDate.getMonth();
                 const isToday = new Date().toDateString() === cloneDay.toDateString();
+                const isWeekend = i >= 5; // Saturday (5) and Sunday (6)
                 const dayEvents = getEventsForDay(cloneDay);
+
+                if (collapseWeekends && isWeekend) {
+                    days.push(
+                        <div
+                            key={day.toISOString()}
+                            className={`relative border-t border-r border-slate-200 min-h-[90px] sm:min-h-[120px] p-1 flex flex-col items-center cursor-pointer transition-colors group/month-weekend ${
+                                isCurrentMonth 
+                                    ? (dayEvents.length > 0 ? 'bg-amber-50/70 hover:bg-amber-100/70' : 'bg-slate-100/80 hover:bg-teal-50/50')
+                                    : 'bg-slate-200/60 opacity-60'
+                            }`}
+                            onClick={() => handleOpenModal(null, { start: cloneDay.toISOString(), isDayOnly: true } as any)}
+                        >
+                            {/* Day Number */}
+                            <div className="flex flex-col items-center">
+                                <span className={`text-xs font-bold ${
+                                    isToday 
+                                        ? 'bg-teal-600 text-white rounded-full w-5 h-5 flex items-center justify-center' 
+                                        : isCurrentMonth ? 'text-slate-800' : 'text-slate-400'
+                                }`}>
+                                    {cloneDay.getDate()}
+                                </span>
+                            </div>
+
+                            {/* Events indicators in collapsed weekend */}
+                            {dayEvents.length > 0 ? (
+                                <>
+                                    <div className="mt-1 flex flex-col gap-1 w-full items-center">
+                                        <span 
+                                            className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[9px] font-bold rounded-full bg-amber-500 text-white shadow-2xs animate-pulse"
+                                            title={`${dayEvents.length} cita(s) este día`}
+                                        >
+                                            {dayEvents.length}
+                                        </span>
+                                        <div className="w-full flex flex-col gap-0.5 mt-0.5">
+                                            {dayEvents.slice(0, 3).map(event => {
+                                                const style = getInterventionTypeColor(event.interventionType);
+                                                const canView = isFullDetailsAuthorized(event);
+                                                return (
+                                                    <div
+                                                        key={event.id}
+                                                        style={{ backgroundColor: style.backgroundColor, borderLeft: `2.5px solid ${style.borderLeftColor}` }}
+                                                        className="w-full h-3 rounded-2xs flex items-center justify-center overflow-hidden px-0.5 cursor-pointer hover:scale-105 transition-transform shadow-2xs"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (canView) {
+                                                                handleOpenModal(event, undefined);
+                                                            } else {
+                                                                setPrivateEventInfo(event);
+                                                            }
+                                                        }}
+                                                        title={`${event.title} (${event.interventionType})`}
+                                                    >
+                                                        {!canView || event.isShared === false ? (
+                                                            <IoLockClosedOutline className="text-[8px] text-amber-800" />
+                                                        ) : (
+                                                            <span className="text-[7.5px] font-bold text-slate-700 leading-none truncate">
+                                                                {event.interventionType.slice(0, 3)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                            {dayEvents.length > 3 && (
+                                                <span className="text-[8px] font-bold text-slate-500 text-center leading-none">
+                                                    +{dayEvents.length - 3}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Hover Popover with full event details */}
+                                    <div className="hidden group-hover/month-weekend:flex flex-col absolute right-0 top-full mt-1 z-50 w-64 bg-white rounded-xl shadow-xl border border-slate-200 p-2.5 text-left text-xs pointer-events-auto animate-in fade-in duration-150">
+                                        <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 mb-1.5">
+                                            <span className="font-bold text-slate-800 text-xs">
+                                                {i === 5 ? 'Sábado' : 'Domingo'} {cloneDay.getDate()}
+                                            </span>
+                                            <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-bold">
+                                                {dayEvents.length} cita(s)
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                            {dayEvents.map(event => {
+                                                const canView = isFullDetailsAuthorized(event);
+                                                const caseForEv = canView && event.caseId ? cases.find(c => c.id === event.caseId) : null;
+                                                const style = getInterventionTypeColor(event.interventionType);
+                                                const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' });
+                                                const associatedProfs = getAssociatedProfessionals(event, caseForEv);
+
+                                                return (
+                                                    <div 
+                                                        key={event.id}
+                                                        style={{ ...style, borderLeft: `3px solid ${style.borderLeftColor}` }}
+                                                        className="p-1.5 rounded text-xs cursor-pointer hover:brightness-95 transition-all shadow-2xs"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (canView) {
+                                                                handleOpenModal(event, undefined);
+                                                            } else {
+                                                                setPrivateEventInfo(event);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <div className="flex items-center justify-between gap-1 text-[10px] font-bold pb-0.5">
+                                                            <span className="truncate">{event.interventionType}</span>
+                                                            <span className="text-slate-600 font-normal shrink-0">
+                                                                {!event.isAllDay 
+                                                                    ? `${timeFormat.format(new Date(event.start))} - ${timeFormat.format(new Date(event.end))}`
+                                                                    : 'Todo el día'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="font-semibold truncate text-slate-900">
+                                                            {canView ? (caseForEv ? `${caseForEv.name} - ${event.title}` : event.title) : 'Ocupado'}
+                                                        </div>
+                                                        {associatedProfs.length > 0 && (
+                                                            <div className="mt-1 flex items-center gap-1">
+                                                                <div className="flex -space-x-1">
+                                                                    {associatedProfs.map(p => (
+                                                                        <TechnicianAvatar key={p.id} professional={p} size="xs" />
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="mt-2 pt-1 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                                            <span className="text-teal-600 font-semibold">Clic en cita para abrir</span>
+                                            <button 
+                                                type="button" 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setCollapseWeekends(false);
+                                                }}
+                                                className="text-slate-500 hover:text-slate-800 underline font-medium cursor-pointer"
+                                            >
+                                                Expandir fin de semana
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="mt-2 opacity-0 group-hover/month-weekend:opacity-100 text-[10px] text-slate-400 font-bold">
+                                    +
+                                </div>
+                            )}
+                        </div>
+                    );
+                    day.setDate(day.getDate() + 1);
+                    continue;
+                }
+
+                // Distinct shaded background for weekends vs weekdays (uncollapsed)
+                const bgStyle = isWeekend
+                    ? (isCurrentMonth ? 'bg-slate-100/70 hover:bg-slate-200/50' : 'bg-slate-200/60')
+                    : (isCurrentMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50');
 
                 days.push(
                     <div
                         key={day.toISOString()}
-                        className={`relative border-t border-r border-slate-200 min-h-[90px] sm:min-h-[120px] overflow-y-auto p-1.5 cursor-pointer transition-colors hover:bg-slate-100/50 ${isCurrentMonth ? 'bg-white' : 'bg-slate-50'}`}
+                        className={`relative border-t border-r border-slate-200 min-h-[90px] sm:min-h-[120px] overflow-y-auto p-1.5 cursor-pointer transition-colors ${bgStyle}`}
                         onClick={() => handleOpenModal(null, { start: cloneDay.toISOString(), isDayOnly: true } as any)}
                     >
-                        <span className={`text-sm font-medium ${isToday ? 'bg-teal-600 text-white rounded-full w-6 h-6 flex items-center justify-center' : isCurrentMonth ? 'text-slate-700' : 'text-slate-400'}`}>
-                            {cloneDay.getDate()}
-                        </span>
+                        <div className="flex items-center justify-between">
+                            <span className={`text-sm font-medium ${isToday ? 'bg-teal-600 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold' : isCurrentMonth ? (isWeekend ? 'text-slate-800 font-semibold' : 'text-slate-700') : 'text-slate-400'}`}>
+                                {cloneDay.getDate()}
+                            </span>
+                            {isWeekend && isCurrentMonth && (
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter sm:inline hidden">
+                                    {i === 5 ? 'Sáb' : 'Dom'}
+                                </span>
+                            )}
+                        </div>
                         <div className={`mt-1 space-y-1 ${!isCurrentMonth ? 'opacity-60' : ''}`}>
                             {dayEvents.slice(0, 4).map(event => <EventItem key={event.id} event={event} />)}
                             {dayEvents.length > 4 && <p className="text-xs text-slate-400 font-medium text-center">+ {dayEvents.length - 4} más</p>}
@@ -749,15 +1382,33 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 );
                 day.setDate(day.getDate() + 1);
             }
-            rows.push(<div key={w} className="grid grid-cols-7">{days}</div>);
+            rows.push(<div key={w} className="grid" style={{ gridTemplateColumns }}>{days}</div>);
         }
         return (
-            <>
-                <div className="grid grid-cols-7 text-center font-semibold text-slate-600">
-                    {WEEKDAYS.map(day => <div key={day} className="py-2 border-b border-slate-200">{day}</div>)}
+            <div className="overflow-x-auto rounded-lg">
+                <div className={`border-l border-b border-slate-200 bg-white ${collapseWeekends ? 'min-w-[720px]' : 'min-w-[850px]'}`}>
+                    <div className="grid text-center font-semibold text-slate-600" style={{ gridTemplateColumns }}>
+                        {WEEKDAYS.map((day, idx) => {
+                            const isWeekend = idx >= 5;
+                            return (
+                                <div 
+                                    key={day} 
+                                    className={`py-2 border-b border-r border-slate-200 ${
+                                        isWeekend 
+                                            ? `bg-slate-100/90 text-slate-800 font-bold border-t-2 border-t-slate-300 ${collapseWeekends ? 'text-[11px] px-0.5 cursor-pointer hover:bg-teal-50' : ''}` 
+                                            : 'text-sm'
+                                    }`}
+                                    onClick={isWeekend && collapseWeekends ? () => setCollapseWeekends(false) : undefined}
+                                    title={isWeekend && collapseWeekends ? "Fin de semana colapsado. Clic para expandir" : undefined}
+                                >
+                                    {collapseWeekends && isWeekend ? (idx === 5 ? 'Sáb' : 'Dom') : day}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div>{rows}</div>
                 </div>
-                <div className="border-l border-b border-slate-200">{rows}</div>
-            </>
+            </div>
         );
     };
     
@@ -775,6 +1426,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
              const rawEvents = getEventsForDay(day).filter(e => !e.isAllDay);
              return calculateEventPositions(rawEvents);
         });
+
+        const gridTemplateColumns = collapseWeekends 
+            ? 'repeat(5, minmax(0, 1fr)) 44px 44px' 
+            : 'repeat(7, minmax(0, 1fr))';
     
         const timeColumn = (
             <div className="w-16 flex-shrink-0 text-right pr-2">
@@ -791,18 +1446,37 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         const gridColumn = (
             <div className="relative flex-1">
                 {/* Background Grid */}
-                <div className="grid-lines grid grid-cols-7">
+                <div className="grid-lines grid" style={{ gridTemplateColumns }}>
                     {Array.from({ length: (END_HOUR - START_HOUR) * 7 }).map((_, i) => {
                         const dayIndex = i % 7;
                         const hourIndex = Math.floor(i / 7);
                         const hour = START_HOUR + hourIndex;
                         const targetDay = weekDays[dayIndex];
+                        const isWeekend = dayIndex >= 5;
                         const slotDate = new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate(), hour, 0, 0, 0);
+
+                        if (collapseWeekends && isWeekend) {
+                            return (
+                                <div 
+                                    key={`grid-cell-${i}`} 
+                                    style={{ height: `${HOUR_HEIGHT}px` }} 
+                                    className="border-b border-l border-slate-200 bg-slate-100/80 cursor-pointer hover:bg-teal-50/50 transition-colors"
+                                    onClick={() => {
+                                        setCollapseWeekends(false);
+                                        handleOpenModal(null, { start: slotDate.toISOString(), hasExplicitTime: true } as any);
+                                    }}
+                                    title={`Sábado/Domingo a las ${hour.toString().padStart(2, '0')}:00. Clic para expandir`}
+                                ></div>
+                            );
+                        }
+
                         return (
                             <div 
                                 key={`grid-cell-${i}`} 
                                 style={{ height: `${HOUR_HEIGHT}px` }} 
-                                className="border-b border-l border-slate-200 cursor-pointer hover:bg-teal-50/40 transition-colors"
+                                className={`border-b border-l border-slate-200 cursor-pointer hover:bg-teal-50/40 transition-colors ${
+                                    isWeekend ? 'bg-slate-100/50' : 'bg-white'
+                                }`}
                                 onClick={() => handleOpenModal(null, { start: slotDate.toISOString(), hasExplicitTime: true } as any)}
                                 title={`Crear cita para ${targetDay.toLocaleDateString('es-ES')} a las ${hour.toString().padStart(2, '0')}:00`}
                             ></div>
@@ -810,49 +1484,125 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                     })}
                 </div>
     
-                {/* Events */}
-                <div className="absolute top-0 left-0 right-0 bottom-0 grid grid-cols-7 pointer-events-none">
-                    {timedEventsPositionsByDay.map((positionedEvents, dayIndex) => (
-                        <div key={dayIndex} className="relative border-l border-slate-200">
-                            {positionedEvents.map(({event, style}) => (
-                                <div 
-                                    key={event.id} 
-                                    className="absolute z-10 pointer-events-auto hover:z-40" 
-                                    style={{ 
-                                        top: `${style.top}px`, 
-                                        height: `${style.height}px`,
-                                        left: `${style.left}%`,
-                                        width: `${style.width}%`,
-                                        paddingRight: '2px' // small visual gap
-                                    }}
-                                >
-                                    <TimedEventItem event={event} />
-                                </div>
-                            ))}
-                        </div>
-                    ))}
+                {/* Events Overlay */}
+                <div className="absolute top-0 left-0 right-0 bottom-0 grid pointer-events-none" style={{ gridTemplateColumns }}>
+                    {timedEventsPositionsByDay.map((positionedEvents, dayIndex) => {
+                        const isWeekend = dayIndex >= 5;
+                        return (
+                            <div key={dayIndex} className="relative border-l border-slate-200">
+                                {positionedEvents.map(({event, style}) => {
+                                    if (collapseWeekends && isWeekend) {
+                                        return (
+                                            <div 
+                                                key={event.id} 
+                                                className="absolute z-10 pointer-events-auto hover:z-40" 
+                                                style={{ 
+                                                    top: `${style.top}px`, 
+                                                    height: `${Math.max(style.height, 28)}px`,
+                                                    left: '2px',
+                                                    right: '2px',
+                                                    width: 'calc(100% - 4px)'
+                                                }}
+                                            >
+                                                <CollapsedWeekendEventItem event={event} />
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div 
+                                            key={event.id} 
+                                            className="absolute z-10 pointer-events-auto hover:z-40" 
+                                            style={{ 
+                                                top: `${style.top}px`, 
+                                                height: `${style.height}px`,
+                                                left: `${style.left}%`,
+                                                width: `${style.width}%`,
+                                                paddingRight: '2px' // small visual gap
+                                            }}
+                                        >
+                                            <TimedEventItem event={event} />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         );
     
         return (
             <div className="overflow-x-auto rounded-lg">
-                <div className="border border-slate-200 bg-white min-w-[900px]">
+                <div className={`border border-slate-200 bg-white ${collapseWeekends ? 'min-w-[760px]' : 'min-w-[900px]'}`}>
                     {/* Day Headers */}
                     <div className="flex">
                         <div className="w-16 flex-shrink-0 border-b border-slate-200"></div> {/* Top-left corner */}
-                        <div className="flex-1 grid grid-cols-7">
-                            {weekDays.map(day => (
-                                <div key={day.toISOString()} className="text-center p-2 border-b border-l border-slate-200">
-                                    <div className="text-sm font-semibold text-slate-600">{WEEKDAYS[(day.getDay() + 6) % 7]}</div>
-                                    <button
-                                        onClick={() => handleSelectDay(day)}
-                                        className={`text-lg font-bold rounded-full w-8 h-8 mx-auto flex items-center justify-center transition-colors hover:bg-teal-100 ${new Date().toDateString() === day.toDateString() ? 'bg-teal-600 text-white hover:bg-teal-700' : 'text-slate-800'}`}
+                        <div className="flex-1 grid" style={{ gridTemplateColumns }}>
+                            {weekDays.map((day, dayIndex) => {
+                                const isWeekend = dayIndex >= 5;
+                                const isToday = new Date().toDateString() === day.toDateString();
+                                const dayEvents = getEventsForDay(day);
+                                const hasEvents = dayEvents.length > 0;
+
+                                if (collapseWeekends && isWeekend) {
+                                    return (
+                                        <div 
+                                            key={day.toISOString()} 
+                                            className={`text-center py-2 px-0.5 border-b border-l border-slate-200 cursor-pointer transition-all hover:bg-teal-50/70 group border-t-2 border-t-slate-300 ${hasEvents ? 'bg-amber-100/70' : 'bg-slate-100/90'}`}
+                                            onClick={() => setCollapseWeekends(false)}
+                                            title={`Fin de semana (${WEEKDAYS[(day.getDay() + 6) % 7]} ${day.getDate()}) - ${hasEvents ? `${dayEvents.length} cita(s)` : 'Sin citas'}. Clic para expandir`}
+                                        >
+                                            <div className="text-[11px] font-bold text-slate-700 uppercase tracking-tight">
+                                                {WEEKDAYS[(day.getDay() + 6) % 7]}
+                                            </div>
+                                            <div
+                                                className={`text-xs font-bold rounded-full w-5 h-5 mx-auto flex items-center justify-center mt-0.5 ${
+                                                    isToday ? 'bg-teal-600 text-white' : 'text-slate-800 group-hover:bg-teal-100'
+                                                }`}
+                                            >
+                                                {day.getDate()}
+                                            </div>
+                                            {/* Visual Indicator of events */}
+                                            {hasEvents ? (
+                                                <div className="mt-1 flex justify-center">
+                                                    <span 
+                                                        className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[9px] font-bold rounded-full bg-amber-500 text-white shadow-2xs animate-pulse"
+                                                        title={`${dayEvents.length} cita(s) programada(s)`}
+                                                    >
+                                                        {dayEvents.length}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <div className="mt-1 opacity-0 group-hover:opacity-100 text-[10px] text-slate-400 font-bold">
+                                                    +
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div 
+                                        key={day.toISOString()} 
+                                        className={`text-center p-2 border-b border-l border-slate-200 ${
+                                            isWeekend ? 'bg-slate-100/80 border-t-2 border-t-slate-300' : 'bg-white'
+                                        }`}
                                     >
-                                        {day.getDate()}
-                                    </button>
-                                </div>
-                            ))}
+                                        <div className={`text-sm ${isWeekend ? 'font-bold text-slate-800' : 'font-semibold text-slate-600'}`}>
+                                            {WEEKDAYS[(day.getDay() + 6) % 7]}
+                                        </div>
+                                        <button
+                                            onClick={() => handleSelectDay(day)}
+                                            className={`text-lg font-bold rounded-full w-8 h-8 mx-auto flex items-center justify-center transition-colors hover:bg-teal-100 cursor-pointer ${
+                                                isToday ? 'bg-teal-600 text-white hover:bg-teal-700' : 'text-slate-800'
+                                            }`}
+                                        >
+                                            {day.getDate()}
+                                        </button>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                     
@@ -862,12 +1612,37 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                              <div className="w-16 flex-shrink-0 border-b border-slate-200 text-center flex items-center justify-center">
                                 <span className="text-xs font-semibold text-slate-500">Todo el día</span>
                              </div>
-                             <div className="flex-1 grid grid-cols-7">
-                                 {allDayEventsByDay.map((events, dayIndex) => (
-                                     <div key={dayIndex} className="border-b border-l border-slate-200 p-1 min-h-[30px]">
-                                        {events.map(event => <EventItem key={event.id} event={event} />)}
-                                     </div>
-                                 ))}
+                             <div className="flex-1 grid" style={{ gridTemplateColumns }}>
+                                 {allDayEventsByDay.map((events, dayIndex) => {
+                                     const isWeekend = dayIndex >= 5;
+                                     if (collapseWeekends && isWeekend) {
+                                         return (
+                                             <div 
+                                                 key={dayIndex} 
+                                                 className={`border-b border-l border-slate-200 p-1 min-h-[30px] flex items-center justify-center cursor-pointer hover:bg-teal-50/50 ${events.length > 0 ? 'bg-amber-100/60' : 'bg-slate-100/80'}`}
+                                                 onClick={() => setCollapseWeekends(false)}
+                                                 title={events.length > 0 ? `${events.length} cita(s) de todo el día. Clic para expandir` : 'Clic para expandir'}
+                                             >
+                                                 {events.length > 0 && (
+                                                     <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[9px] font-bold rounded-full bg-amber-500 text-white shadow-2xs">
+                                                         {events.length}
+                                                     </span>
+                                                 )}
+                                             </div>
+                                         );
+                                     }
+
+                                     return (
+                                         <div 
+                                            key={dayIndex} 
+                                            className={`border-b border-l border-slate-200 p-1 min-h-[30px] ${
+                                                isWeekend ? 'bg-slate-100/50' : 'bg-white'
+                                            }`}
+                                         >
+                                            {events.map(event => <EventItem key={event.id} event={event} />)}
+                                         </div>
+                                     );
+                                 })}
                              </div>
                         </div>
                     )}
