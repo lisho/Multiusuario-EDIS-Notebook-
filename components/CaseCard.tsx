@@ -1,5 +1,5 @@
 import React from 'react';
-import { Case, CaseStatus, Professional, DashboardView, ProfessionalRole, User } from '../types';
+import { Case, CaseStatus, Professional, DashboardView, ProfessionalRole, User, isEdisProfessional } from '../types';
 import {
     IoCheckboxOutline, IoAddCircleOutline,
     IoBookOutline, IoJournalOutline
@@ -69,7 +69,7 @@ const CaseCard: React.FC<CaseCardProps> = ({
         .filter(Boolean) as Professional[];
 
     const socialWorkers = assignedProfessionals.filter(p => p.role === ProfessionalRole.SocialWorker);
-    const edisTechnicians = assignedProfessionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+    const edisTechnicians = assignedProfessionals.filter(isEdisProfessional);
 
 
     const timeSinceUpdate = (dateString: string) => {

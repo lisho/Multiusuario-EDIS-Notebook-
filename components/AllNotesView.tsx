@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Case, Task, MyNote, User, Professional, ProfessionalRole, DashboardView } from '../types';
+import { Case, Task, MyNote, User, Professional, ProfessionalRole, DashboardView, isEdisProfessional } from '../types';
 import { 
     IoAddOutline, 
     IoCheckbox, 
@@ -87,11 +87,7 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
 
     // Filtered EDIS technicians for professional filters
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => 
-            p.role === ProfessionalRole.EdisTechnician || 
-            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
-            p.role !== ProfessionalRole.SocialWorker
-        );
+        return professionals.filter(isEdisProfessional);
     }, [professionals]);
 
     const isVisibleToUser = (item: { createdBy?: string; assignedTo?: string[] }) => {

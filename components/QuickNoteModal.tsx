@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { IoCloseOutline, IoSaveOutline } from 'react-icons/io5';
-import { Professional, ProfessionalRole, User } from '../types';
+import { Professional, ProfessionalRole, User, isEdisProfessional } from '../types';
 
 interface QuickNoteModalProps {
   isOpen: boolean;
@@ -28,11 +28,7 @@ const QuickNoteModal: React.FC<QuickNoteModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const availableProfessionals = useMemo(() => {
-    const edisProfs = professionals.filter(p => 
-      p.role === ProfessionalRole.EdisTechnician || 
-      (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
-      p.role !== ProfessionalRole.SocialWorker
-    );
+    const edisProfs = professionals.filter(isEdisProfessional);
     if (caseProfessionalIds && caseProfessionalIds.length > 0) {
       const caseProfs = edisProfs.filter(p => caseProfessionalIds.includes(p.id));
       return caseProfs.length > 0 ? caseProfs : edisProfs;

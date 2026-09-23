@@ -16,8 +16,8 @@ const getInitialProfessional = (role: ProfessionalRole): Omit<Professional, 'id'
     ceas: '',
     phone: '',
     email: '',
-    isSystemUser: role === ProfessionalRole.EdisTechnician,
-    systemRole: 'tecnico',
+    isSystemUser: role !== ProfessionalRole.SocialWorker,
+    systemRole: role === ProfessionalRole.Administrator ? 'admin' : 'tecnico',
     password: '',
 });
 
@@ -63,9 +63,17 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
 
     setProfessional(prev => {
         const newState = { ...prev, [name]: type === 'checkbox' ? checked : value };
-        if (name === 'role' && value === ProfessionalRole.SocialWorker) {
-            newState.isSystemUser = false;
-            newState.systemRole = undefined;
+        if (name === 'role') {
+            if (value === ProfessionalRole.SocialWorker) {
+                newState.isSystemUser = false;
+                newState.systemRole = undefined;
+            } else if (value === ProfessionalRole.Administrator) {
+                newState.isSystemUser = true;
+                newState.systemRole = 'admin';
+            } else {
+                newState.isSystemUser = true;
+                if (!newState.systemRole) newState.systemRole = 'tecnico';
+            }
         }
         if (name === 'isSystemUser' && !checked) {
             newState.systemRole = 'tecnico'; // Reset role to default when access is disabled
@@ -137,13 +145,27 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
                     name="role" 
                     value={professional.role} 
                     onChange={handleChange} 
-                    disabled={!initialData}
-                    className={`${formInputStyle(false)} ${!initialData ? 'opacity-70 cursor-not-allowed bg-slate-200' : ''}`}
+                    className={formInputStyle(false)}
                 >
-                    {Object.values(ProfessionalRole).map(role => (
-                        <option key={role} value={role}>{role}</option>
-                    ))}
+                    <optgroup label="Equipo EDIS">
+                        <option value={ProfessionalRole.Edis1}>{ProfessionalRole.Edis1}</option>
+                        <option value={ProfessionalRole.Edis2}>{ProfessionalRole.Edis2}</option>
+                        <option value={ProfessionalRole.EdisTechnician}>{ProfessionalRole.EdisTechnician} (General)</option>
+                    </optgroup>
+                    <optgroup label="Administración">
+                        <option value={ProfessionalRole.Administrator}>{ProfessionalRole.Administrator}</option>
+                    </optgroup>
+                    <optgroup label="Contactos Externos">
+                        <option value={ProfessionalRole.SocialWorker}>{ProfessionalRole.SocialWorker} (CEAS)</option>
+                    </optgroup>
                 </select>
+                <p className="text-xs text-slate-500 mt-1">
+                    {professional.role === ProfessionalRole.Administrator
+                        ? 'Los usuarios administradores gestionan el sistema y no se listan en los filtros técnicos de casos/intervenciones.'
+                        : professional.role === ProfessionalRole.SocialWorker
+                        ? 'Contactos de derivación pertenecientes a los CEAS.'
+                        : 'Técnicos de intervención comunitaria y seguimiento de casos EDIS.'}
+                </p>
             </div>
             <div>
               <label htmlFor="name" className="block text-slate-700 font-semibold mb-2">Nombre Completo</label>
@@ -174,7 +196,7 @@ const ProfessionalEditorModal: React.FC<ProfessionalEditorModalProps> = ({ isOpe
               </>
             )}
 
-            {professional.role === ProfessionalRole.EdisTechnician && (
+            {professional.role !== ProfessionalRole.SocialWorker && (
                 <div className="mt-4 pt-4 border-t border-slate-200 space-y-4">
                     <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
                         <input type="checkbox" name="isSystemUser" checked={!!professional.isSystemUser} onChange={handleChange} className="h-5 w-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />

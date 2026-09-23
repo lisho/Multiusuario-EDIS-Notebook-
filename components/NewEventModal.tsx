@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Case, Intervention, InterventionStatus, InterventionType, Professional, ProfessionalRole, User } from '../types';
+import { Case, Intervention, InterventionStatus, InterventionType, Professional, ProfessionalRole, User, isEdisProfessional } from '../types';
 import { IoCloseOutline, IoTrashOutline, IoSaveOutline, IoEyeOutline, IoLockClosedOutline } from 'react-icons/io5';
 
 interface NewEventModalProps {
@@ -98,11 +98,7 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
     const isEditing = itemData && 'id' in itemData;
 
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => 
-            p.role === ProfessionalRole.EdisTechnician || 
-            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
-            p.role !== ProfessionalRole.SocialWorker
-        );
+        return professionals.filter(isEdisProfessional);
     }, [professionals]);
 
     // Check if the current user is allowed to assign/reassign technicians: only the creator of the event or admin

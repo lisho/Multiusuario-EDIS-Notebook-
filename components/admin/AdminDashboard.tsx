@@ -62,16 +62,30 @@ const ProfessionalSection: React.FC<{
                         <div className="flex items-center gap-3">
                             <IoPeopleOutline className="text-slate-500 text-2xl"/>
                             <div>
-                                <h3 className="font-semibold text-slate-700">
-                                    {prof.name}
-                                    {isUserSection && prof.systemRole === 'admin' && (
-                                        <span className="ml-2 text-xs font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Admin</span>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    <h3 className="font-semibold text-slate-700">
+                                        {prof.name}
+                                    </h3>
+                                    {prof.role === ProfessionalRole.Edis1 && (
+                                        <span className="text-[11px] font-bold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full border border-sky-200">EDIS 1</span>
                                     )}
-                                </h3>
+                                    {prof.role === ProfessionalRole.Edis2 && (
+                                        <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200">EDIS 2</span>
+                                    )}
+                                    {prof.role === ProfessionalRole.EdisTechnician && (
+                                        <span className="text-[11px] font-bold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full border border-teal-200">EDIS</span>
+                                    )}
+                                    {prof.role === ProfessionalRole.Administrator && (
+                                        <span className="text-[11px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-200">Administrador/a</span>
+                                    )}
+                                    {isUserSection && prof.systemRole === 'admin' && prof.role !== ProfessionalRole.Administrator && (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Admin</span>
+                                    )}
+                                </div>
                                 {prof.role === ProfessionalRole.SocialWorker && prof.ceas && (
                                     <p className="text-xs text-slate-500">{prof.ceas}</p>
                                 )}
-                                 {isUserSection && !prof.isSystemUser && (
+                                {isUserSection && !prof.isSystemUser && (
                                     <p className="text-xs font-semibold text-red-600">Acceso deshabilitado</p>
                                 )}
                             </div>
@@ -127,7 +141,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   }, [tools]);
 
   const socialWorkers = useMemo(() => professionals.filter(p => p.role === ProfessionalRole.SocialWorker), [professionals]);
-  const edisTechnicians = useMemo(() => professionals.filter(p => p.role === ProfessionalRole.EdisTechnician), [professionals]);
+  const systemProfessionals = useMemo(() => professionals.filter(p => p.role !== ProfessionalRole.SocialWorker), [professionals]);
 
   const socialWorkersByCeas = useMemo(() => {
     const grouped: Record<string, Professional[]> = {};
@@ -271,11 +285,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                 {activeTab === 'professionals' && (
                     <div className="space-y-8">
                         <ProfessionalSection
-                            title="Usuarios del Sistema (Técnicos EDIS)"
-                            professionals={edisTechnicians}
+                            title="Usuarios del Sistema (Técnicos EDIS y Administradores)"
+                            professionals={systemProfessionals}
                             isUserSection={true}
-                            onAdd={() => handleOpenProfEditor(null, ProfessionalRole.EdisTechnician)}
-                            onEdit={(prof) => handleOpenProfEditor(prof, ProfessionalRole.EdisTechnician)}
+                            onAdd={() => handleOpenProfEditor(null, ProfessionalRole.Edis1)}
+                            onEdit={(prof) => handleOpenProfEditor(prof, prof.role)}
                             onDelete={onDeleteProfessional}
                         />
                         <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 space-y-4">

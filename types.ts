@@ -70,7 +70,48 @@ export enum InterventionStatus {
 export enum ProfessionalRole {
     SocialWorker = 'Trabajador/a Social',
     EdisTechnician = 'Técnico/a EDIS',
+    Edis1 = 'Técnico/a EDIS 1',
+    Edis2 = 'Técnico/a EDIS 2',
+    Administrator = 'Administrador/a',
 }
+
+/**
+ * Comprueba si un rol corresponde a un técnico del equipo EDIS (EDIS 1, EDIS 2 o EDIS General)
+ */
+export const isEdisTechnicianRole = (role?: ProfessionalRole | string | null): boolean => {
+    if (!role) return false;
+    return role === ProfessionalRole.EdisTechnician || 
+           role === ProfessionalRole.Edis1 || 
+           role === ProfessionalRole.Edis2 ||
+           role === 'Técnico/a EDIS' ||
+           role === 'Técnico/a EDIS 1' ||
+           role === 'Técnico/a EDIS 2' ||
+           role === 'EDIS 1' ||
+           role === 'EDIS 2' ||
+           role === 'EDIS';
+};
+
+/**
+ * Comprueba si un profesional forma parte activa del equipo técnico EDIS (excluye Administradores puros y Trabajadores Sociales)
+ */
+export const isEdisProfessional = (p?: Professional | { role: ProfessionalRole | string; isSystemUser?: boolean } | null): boolean => {
+    if (!p) return false;
+    if (p.role === ProfessionalRole.SocialWorker || p.role === ProfessionalRole.Administrator || p.role === 'Administrador/a' || p.role === 'Trabajador/a Social') {
+        return false;
+    }
+    return isEdisTechnicianRole(p.role) || (p.isSystemUser === true && p.role !== ProfessionalRole.Administrator);
+};
+
+/**
+ * Obtiene el subequipo EDIS de un profesional ('EDIS 1', 'EDIS 2', 'EDIS General' o null)
+ */
+export const getProfessionalEdisSubteam = (p?: Professional | { role?: ProfessionalRole | string } | null): 'EDIS 1' | 'EDIS 2' | 'EDIS General' | null => {
+    if (!p || !p.role) return null;
+    if (p.role === ProfessionalRole.Edis1 || p.role === 'Técnico/a EDIS 1' || p.role === 'EDIS 1') return 'EDIS 1';
+    if (p.role === ProfessionalRole.Edis2 || p.role === 'Técnico/a EDIS 2' || p.role === 'EDIS 2') return 'EDIS 2';
+    if (isEdisTechnicianRole(p.role)) return 'EDIS General';
+    return null;
+};
 
 export interface Professional {
     id: string;

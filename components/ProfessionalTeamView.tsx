@@ -112,7 +112,7 @@ const ProfessionalTeamView: React.FC<ProfessionalTeamViewProps> = ({ caseData, p
 
     const assignedIds = caseData.professionalIds || [];
     const assignedProfessionals = professionals.filter(p => assignedIds.includes(p.id));
-    const assignableProfessionals = professionals;
+    const assignableProfessionals = professionals.filter(p => p.role !== ProfessionalRole.Administrator && p.role !== 'Administrador/a');
 
     const handleToggleAssignment = (professionalId: string) => {
         const newAssignedIds = assignedIds.includes(professionalId)

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Case, Intervention, InterventionStatus, InterventionType, Professional, ProfessionalRole, User } from '../types';
+import { Case, Intervention, InterventionStatus, InterventionType, Professional, ProfessionalRole, User, isEdisProfessional } from '../types';
 import { enhanceInterventionNotes, EnhancementStyle } from '../services/geminiService';
 import { 
     IoMicOutline, 
@@ -164,11 +164,7 @@ export const QuickMobileHubModal: React.FC<QuickMobileHubModalProps> = ({
 
     // EDIS Technicians (all EDIS technicians)
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => 
-            p.role === ProfessionalRole.EdisTechnician || 
-            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
-            p.role !== ProfessionalRole.SocialWorker
-        );
+        return professionals.filter(isEdisProfessional);
     }, [professionals]);
 
     // Today's agenda interventions

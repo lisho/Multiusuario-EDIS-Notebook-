@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Case, Task, Professional, ProfessionalRole, DashboardView, User, MyNote } from '../types';
+import { Case, Task, Professional, ProfessionalRole, DashboardView, User, MyNote, isEdisProfessional } from '../types';
 import { 
     IoCloseOutline, 
     IoAddOutline, 
@@ -629,11 +629,7 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
     
     // Filter EDIS Technicians for task assignment
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => 
-            p.role === ProfessionalRole.EdisTechnician || 
-            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
-            p.role !== ProfessionalRole.SocialWorker
-        );
+        return professionals.filter(isEdisProfessional);
     }, [professionals]);
 
     // Filter & Search State

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Case, Intervention, InterventionType, DashboardView, User, Professional, ProfessionalRole } from '../types';
+import { Case, Intervention, InterventionType, DashboardView, User, Professional, ProfessionalRole, isEdisProfessional, getProfessionalEdisSubteam } from '../types';
 import NewEventModal from './NewEventModal';
 import CalendarSearchModal from './CalendarSearchModal';
 import TechnicianAvatar from './TechnicianAvatar';
@@ -236,7 +236,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view, setView] = useState<CalendarViewType>('week');
     const [collapseWeekends, setCollapseWeekends] = useState<boolean>(true);
-    const [calendarFilter, setCalendarFilter] = useState<'me' | 'all' | 'custom'>('me');
+    const [calendarFilter, setCalendarFilter] = useState<'me' | 'my_team' | 'all' | 'custom'>('me');
     const [selectedColleagueIds, setSelectedColleagueIds] = useState<string[]>([currentUser.id]);
     const [isMultiSelectOpen, setIsMultiSelectOpen] = useState<boolean>(false);
     const [colleagueSearchQuery, setColleagueSearchQuery] = useState<string>('');
@@ -296,47 +296,74 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         return Boolean(isAssigned);
     };
 
-    // Personal EDIS para asignación y desplegables (todos los técnicos del equipo EDIS, incluidos administradores)
+    // Personal técnico EDIS para asignación y desplegables (excluye administradores puros y trabajadores sociales)
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => 
-            p.role === ProfessionalRole.EdisTechnician || 
-            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
-            p.role !== ProfessionalRole.SocialWorker
-        );
+        return professionals.filter(isEdisProfessional);
     }, [professionals]);
+
+    // Perfil del usuario actual y su subequipo EDIS
+    const currentUserProf = useMemo(() => {
+        return professionals.find(p => p.id === currentUser.id);
+    }, [professionals, currentUser.id]);
+
+    const currentUserSubteam = useMemo(() => {
+        return getProfessionalEdisSubteam(currentUserProf);
+    }, [currentUserProf]);
 
     // Técnicos activos en la vista compartida actual
     const activeSharedTechnicians = useMemo(() => {
         if (calendarFilter === 'all') {
             return edisTechnicians;
         }
+        if (calendarFilter === 'my_team') {
+            if (currentUserSubteam === 'EDIS 1') {
+                const team1 = edisTechnicians.filter(p => getProfessionalEdisSubteam(p) === 'EDIS 1');
+                return team1.length > 0 ? team1 : edisTechnicians;
+            }
+            if (currentUserSubteam === 'EDIS 2') {
+                const team2 = edisTechnicians.filter(p => getProfessionalEdisSubteam(p) === 'EDIS 2');
+                return team2.length > 0 ? team2 : edisTechnicians;
+            }
+            return edisTechnicians;
+        }
         if (calendarFilter === 'custom') {
             return edisTechnicians.filter(p => selectedColleagueIds.includes(p.id));
         }
         const meProf = professionals.find(p => p.id === currentUser.id);
-        return meProf ? [meProf] : [];
-    }, [calendarFilter, edisTechnicians, selectedColleagueIds, currentUser, professionals]);
+        return meProf ? [meProf] : (edisTechnicians[0] ? [edisTechnicians[0]] : []);
+    }, [calendarFilter, edisTechnicians, currentUserSubteam, selectedColleagueIds, currentUser.id, professionals]);
 
     // Indica si se están comparando múltiples técnicos simultáneamente
     const isSharedViewActive = activeSharedTechnicians.length > 1;
 
     const toggleColleague = (profId: string) => {
         let next: string[];
-        if (calendarFilter !== 'custom') {
-            if (calendarFilter === 'me') {
-                if (profId === currentUser.id) {
-                    next = [];
-                } else {
-                    next = [currentUser.id, profId];
-                }
-            } else {
-                next = [profId];
-            }
-        } else {
+        if (calendarFilter === 'custom') {
             if (selectedColleagueIds.includes(profId)) {
                 next = selectedColleagueIds.filter(id => id !== profId);
             } else {
                 next = [...selectedColleagueIds, profId];
+            }
+        } else if (calendarFilter === 'my_team') {
+            const currentIds = activeSharedTechnicians.map(p => p.id);
+            if (currentIds.includes(profId)) {
+                next = currentIds.filter(id => id !== profId);
+            } else {
+                next = [...currentIds, profId];
+            }
+        } else if (calendarFilter === 'all') {
+            const currentIds = edisTechnicians.map(p => p.id);
+            if (currentIds.includes(profId)) {
+                next = currentIds.filter(id => id !== profId);
+            } else {
+                next = [...currentIds, profId];
+            }
+        } else {
+            // 'me'
+            if (profId === currentUser.id) {
+                next = [];
+            } else {
+                next = [currentUser.id, profId];
             }
         }
         setSelectedColleagueIds(next);
@@ -358,7 +385,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
 
     const selectAllTechnicians = () => {
         setSelectedColleagueIds(edisTechnicians.map(p => p.id));
-        setCalendarFilter('custom');
+        setCalendarFilter('all');
     };
 
     const clearSelectedColleagues = () => {
@@ -388,24 +415,38 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         });
         const combined = Array.from(uniqueMap.values());
 
+        // Quick map for case professional assignments
+        const caseMap = new Map<string, Case>();
+        cases.forEach(c => {
+            if (c.id) caseMap.set(c.id, c);
+        });
+
+        const isEventForTechIds = (i: Intervention, targetIds: string[]) => {
+            const isCreatedBy = !!(i.createdBy && targetIds.includes(i.createdBy));
+            const isAssignedTo = !!(i.assignedTo && Array.isArray(i.assignedTo) && i.assignedTo.some(id => targetIds.includes(id)));
+            const isCaseAssigned = !!(i.caseId && caseMap.has(i.caseId) && caseMap.get(i.caseId)?.professionalIds?.some(id => targetIds.includes(id)));
+            return isCreatedBy || isAssignedTo || isCaseAssigned;
+        };
+
         if (calendarFilter === 'me') {
             return combined.filter(i => 
                 i.createdBy === currentUser.id || 
                 (i.assignedTo && Array.isArray(i.assignedTo) && i.assignedTo.includes(currentUser.id)) ||
+                (i.caseId && caseMap.get(i.caseId)?.professionalIds?.includes(currentUser.id)) ||
                 currentUser.role === 'admin'
             );
         } else if (calendarFilter === 'all') {
             return combined;
+        } else if (calendarFilter === 'my_team') {
+            const teamProfIds = activeSharedTechnicians.map(p => p.id);
+            if (teamProfIds.length === 0) return [];
+            return combined.filter(i => isEventForTechIds(i, teamProfIds));
         } else {
-            // Filter by multiple selected professional IDs
+            // Filter by multiple selected professional IDs ('custom')
             if (selectedColleagueIds.length === 0) return [];
-            return combined.filter(i => {
-                const isCreatedBy = selectedColleagueIds.includes(i.createdBy);
-                const isAssignedTo = i.assignedTo && Array.isArray(i.assignedTo) && i.assignedTo.some(id => selectedColleagueIds.includes(id));
-                return isCreatedBy || isAssignedTo;
-            });
+            return combined.filter(i => isEventForTechIds(i, selectedColleagueIds));
         }
-    }, [cases, generalInterventions, currentUser, calendarFilter, selectedColleagueIds]);
+    }, [cases, generalInterventions, currentUser, calendarFilter, activeSharedTechnicians, selectedColleagueIds]);
 
 
     const handlePrev = () => {
@@ -1214,6 +1255,30 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                                 <button
                                     type="button"
                                     onClick={() => {
+                                        setCalendarFilter('my_team');
+                                        setIsMultiSelectOpen(false);
+                                    }}
+                                    className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        calendarFilter === 'my_team'
+                                            ? 'bg-teal-700 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                    }`}
+                                    title={currentUserSubteam ? `Ver agenda de ${currentUserSubteam}` : 'Ver agenda de mi equipo'}
+                                >
+                                    <span>Mi equipo</span>
+                                    {currentUserSubteam && (
+                                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                                            calendarFilter === 'my_team'
+                                                ? 'bg-teal-800 text-teal-100'
+                                                : 'bg-slate-200 text-slate-700'
+                                        }`}>
+                                            {currentUserSubteam}
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
                                         setCalendarFilter('all');
                                         setIsMultiSelectOpen(false);
                                     }}
@@ -1223,194 +1288,32 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                                     }`}
                                 >
-                                    <span>Todo el equipo</span>
+                                    <span>Todo el EDIS</span>
                                 </button>
-                            </div>
-
-                            {/* Multi-Colleague Selector Button & Dropdown */}
-                            <div className="relative" ref={multiSelectRef}>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsMultiSelectOpen(!isMultiSelectOpen)}
-                                    className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer shadow-2xs ${
-                                        calendarFilter === 'custom'
-                                            ? 'bg-teal-700 text-white border-teal-700 shadow-xs'
-                                            : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
-                                    }`}
-                                    title="Seleccionar varias compañeras/os para ver agendas simultáneas"
-                                >
-                                    <IoFilterOutline className={`text-sm ${calendarFilter === 'custom' ? 'text-white' : 'text-teal-700'}`} />
-                                    <span>
-                                        {calendarFilter === 'custom' 
-                                            ? `Selección conjunta (${selectedColleagueIds.length})` 
-                                            : 'Seleccionar compañeros...'}
-                                    </span>
-                                    <IoChevronDownOutline className={`text-xs transition-transform duration-200 ${isMultiSelectOpen ? 'rotate-180' : ''}`} />
-                                </button>
-
-                                {/* Multi-Select Dropdown Popover */}
-                                {isMultiSelectOpen && (
-                                    <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 z-50 w-80 sm:w-96 bg-white rounded-xl shadow-xl border border-slate-200 p-3 text-left animate-in fade-in zoom-in-95 duration-150">
-                                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                                            <div>
-                                                <h4 className="text-xs font-bold text-slate-800">
-                                                    Técnicos/as EDIS
-                                                </h4>
-                                                <p className="text-[11px] text-slate-500">
-                                                    Selecciona los técnicos de EDIS para ver agendas simultáneas y coordinar actuaciones
-                                                </p>
-                                            </div>
-                                            <button 
-                                                onClick={() => setIsMultiSelectOpen(false)}
-                                                className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 cursor-pointer"
-                                                title="Cerrar"
-                                            >
-                                                <IoCloseOutline className="text-base" />
-                                            </button>
-                                        </div>
-
-                                        {/* Quick Action Shortcuts */}
-                                        <div className="flex items-center gap-1.5 my-2 flex-wrap">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedColleagueIds([currentUser.id]);
-                                                    setCalendarFilter('custom');
-                                                }}
-                                                className="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-slate-100 text-slate-700 hover:bg-teal-50 hover:text-teal-800 transition-colors cursor-pointer"
-                                            >
-                                                Solo yo
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={selectAllTechnicians}
-                                                className="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-slate-100 text-slate-700 hover:bg-teal-50 hover:text-teal-800 transition-colors cursor-pointer"
-                                            >
-                                                Seleccionar todos los EDIS
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={clearSelectedColleagues}
-                                                className="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
-                                            >
-                                                Desmarcar todos
-                                            </button>
-                                        </div>
-
-                                        {/* Search Filter Box */}
-                                        <div className="relative mb-2">
-                                            <IoSearchOutline className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
-                                            <input
-                                                type="text"
-                                                placeholder="Buscar técnico/a EDIS..."
-                                                value={colleagueSearchQuery}
-                                                onChange={(e) => setColleagueSearchQuery(e.target.value)}
-                                                className="w-full text-xs pl-7 pr-7 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-teal-500 focus:outline-none transition-colors"
-                                            />
-                                            {colleagueSearchQuery && (
-                                                <button
-                                                    onClick={() => setColleagueSearchQuery('')}
-                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
-                                                >
-                                                    <IoCloseOutline />
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        {/* Colleagues List */}
-                                        <div className="max-h-56 overflow-y-auto space-y-1 pr-1 divide-y divide-slate-50">
-                                            {edisTechnicians
-                                                .filter(p => {
-                                                    if (!colleagueSearchQuery.trim()) return true;
-                                                    const q = colleagueSearchQuery.toLowerCase();
-                                                    return p.name.toLowerCase().includes(q) || (p.role && p.role.toLowerCase().includes(q));
-                                                })
-                                                .map(prof => {
-                                                    const isChecked = calendarFilter === 'custom' 
-                                                        ? selectedColleagueIds.includes(prof.id)
-                                                        : (calendarFilter === 'me' ? prof.id === currentUser.id : true);
-                                                    const isCurrentUser = prof.id === currentUser?.id;
-
-                                                    return (
-                                                        <div
-                                                            key={prof.id}
-                                                            className={`flex items-center justify-between p-1.5 rounded-lg transition-colors cursor-pointer group ${
-                                                                isChecked 
-                                                                    ? 'bg-teal-50/80 border border-teal-200/60' 
-                                                                    : 'hover:bg-slate-50 border border-transparent'
-                                                            }`}
-                                                            onClick={() => toggleColleague(prof.id)}
-                                                        >
-                                                            <div className="flex items-center gap-2 min-w-0">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={isChecked}
-                                                                    onChange={() => {}} // handled by parent onClick
-                                                                    className="w-3.5 h-3.5 text-teal-600 rounded border-slate-300 focus:ring-teal-500 pointer-events-none"
-                                                                />
-                                                                <TechnicianAvatar professional={prof} size="xs" />
-                                                                <div className="min-w-0">
-                                                                    <div className="text-xs font-semibold text-slate-800 flex items-center gap-1 truncate">
-                                                                        <span>{prof.name}</span>
-                                                                        {isCurrentUser && (
-                                                                            <span className="text-[10px] bg-teal-100 text-teal-800 font-bold px-1 rounded">
-                                                                                Tú
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="text-[10px] text-slate-500 truncate">
-                                                                        {prof.role}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                {!isCurrentUser && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            selectMeAndColleague(prof.id);
-                                                                        }}
-                                                                        className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-teal-100 hover:bg-teal-200 text-teal-800 cursor-pointer"
-                                                                        title={`Ver mi agenda + ${prof.name}`}
-                                                                    >
-                                                                        Yo + {prof.name.split(' ')[0]}
-                                                                    </button>
-                                                                )}
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        selectOnlyColleague(prof.id);
-                                                                    }}
-                                                                    className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-slate-200 hover:bg-slate-300 text-slate-700 cursor-pointer"
-                                                                    title={`Ver solo a ${prof.name}`}
-                                                                >
-                                                                    Solo
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                        </div>
-
-                                        {/* Footer */}
-                                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                                            <span className="text-[11px] font-medium text-slate-500">
-                                                {selectedColleagueIds.length} seleccionado(s)
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsMultiSelectOpen(false)}
-                                                className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer shadow-2xs"
-                                            >
-                                                Aplicar selección
-                                            </button>
-                                        </div>
-                                    </div>
+                                {calendarFilter === 'custom' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsMultiSelectOpen(true)}
+                                        className="px-3 py-1 text-xs font-bold rounded-md bg-teal-700 text-white shadow-xs flex items-center gap-1 cursor-pointer"
+                                        title="Modificar selección de compañeros"
+                                    >
+                                        <span>Personalizado ({selectedColleagueIds.length})</span>
+                                    </button>
                                 )}
                             </div>
+
+                            {/* Acceso rápido a añadir/personalizar compañeros si está en vista individual */}
+                            {calendarFilter === 'me' && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsMultiSelectOpen(true)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-teal-800 hover:text-teal-950 bg-teal-100/80 hover:bg-teal-200/90 rounded-lg transition-colors cursor-pointer border border-teal-200/60 shadow-2xs"
+                                    title="Añadir compañeros para comparar agendas"
+                                >
+                                    <IoPersonAddOutline className="text-xs" />
+                                    <span>+ Añadir compañeros</span>
+                                </button>
+                            )}
                         </div>
 
                         {/* Privacy Legend */}
@@ -1426,34 +1329,44 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                         </div>
                     </div>
 
-                    {/* Active Multi-Colleague Joint Planning Banner */}
-                    {calendarFilter === 'custom' && (
+                    {/* Active Multi-Colleague / Team Joint Planning Banner */}
+                    {(calendarFilter === 'custom' || calendarFilter === 'my_team') && (
                         <div className="mt-1 pt-2 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                             <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-[11px] font-bold text-teal-900 flex items-center gap-1 shrink-0">
                                     <IoPeopleOutline className="text-teal-700" />
-                                    <span>Planificación conjunta ({selectedColleagueIds.length}):</span>
+                                    <span>
+                                        {calendarFilter === 'my_team' 
+                                            ? `Mi equipo ${currentUserSubteam ? `(${currentUserSubteam})` : ''} [${activeSharedTechnicians.length} técnicos]:` 
+                                            : `Planificación conjunta (${selectedColleagueIds.length}):`}
+                                    </span>
                                 </span>
-                                {selectedColleagueIds.length === 0 ? (
+                                {activeSharedTechnicians.length === 0 ? (
                                     <span className="text-xs italic text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                        Ningún compañero seleccionado. Haz clic en "Añadir compañeros"
+                                        Ningún compañero seleccionado. Haz clic en "+ Añadir"
                                     </span>
                                 ) : (
-                                    selectedColleagueIds.map(id => {
-                                        const prof = professionals.find(p => p.id === id);
-                                        if (!prof) return null;
+                                    activeSharedTechnicians.map(prof => {
                                         const profColor = getProfessionalColorConfig(prof.id, professionals);
+                                        const subteam = getProfessionalEdisSubteam(prof);
                                         return (
                                             <span 
-                                                key={id}
+                                                key={prof.id}
                                                 className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-full text-xs font-semibold bg-white border border-slate-300 text-slate-800 shadow-2xs"
                                                 style={colorMode === 'by-technician' ? { borderLeft: `4px solid ${profColor.border}` } : {}}
                                             >
                                                 <TechnicianAvatar professional={prof} size="xs" />
                                                 <span>{prof.name} {prof.id === currentUser?.id ? '(Tú)' : ''}</span>
+                                                {subteam && subteam !== 'EDIS General' && (
+                                                    <span className={`text-[9px] px-1 py-0.2 rounded font-bold ${
+                                                        subteam === 'EDIS 1' ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'
+                                                    }`}>
+                                                        {subteam}
+                                                    </span>
+                                                )}
                                                 <button
                                                     type="button"
-                                                    onClick={() => toggleColleague(id)}
+                                                    onClick={() => toggleColleague(prof.id)}
                                                     className="text-slate-400 hover:text-rose-600 ml-0.5 transition-colors cursor-pointer"
                                                     title={`Quitar a ${prof.name}`}
                                                 >
@@ -1482,6 +1395,236 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                             </button>
                         </div>
                     )}
+
+            {/* Modal para selección y comparación de técnicos EDIS (abierto desde +Añadir) */}
+            {isMultiSelectOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-150">
+                    <div 
+                        ref={multiSelectRef}
+                        className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 sm:p-5 text-left animate-in zoom-in-95 duration-150 flex flex-col max-h-[88vh]"
+                    >
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center font-bold shadow-2xs">
+                                    <IoPeopleOutline className="text-xl" />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-bold text-slate-800">
+                                        Seleccionar Técnicos/as EDIS
+                                    </h4>
+                                    <p className="text-xs text-slate-500">
+                                        Selecciona los técnicos para ver agendas simultáneas y coordinar actuaciones
+                                    </p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setIsMultiSelectOpen(false)}
+                                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors"
+                                title="Cerrar"
+                            >
+                                <IoCloseOutline className="text-xl" />
+                            </button>
+                        </div>
+
+                        {/* Quick Action Shortcuts */}
+                        <div className="flex items-center gap-1.5 my-3 flex-wrap">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSelectedColleagueIds([currentUser.id]);
+                                    setCalendarFilter('me');
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-teal-50 hover:text-teal-800 transition-colors cursor-pointer"
+                            >
+                                Solo yo
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const myTeamIds = edisTechnicians
+                                        .filter(p => currentUserSubteam ? getProfessionalEdisSubteam(p) === currentUserSubteam : true)
+                                        .map(p => p.id);
+                                    setSelectedColleagueIds(myTeamIds);
+                                    setCalendarFilter('my_team');
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-teal-50 text-teal-800 hover:bg-teal-100 transition-colors cursor-pointer border border-teal-200/60"
+                            >
+                                Mi equipo {currentUserSubteam ? `(${currentUserSubteam})` : ''}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const team1Ids = edisTechnicians
+                                        .filter(p => getProfessionalEdisSubteam(p) === 'EDIS 1')
+                                        .map(p => p.id);
+                                    setSelectedColleagueIds(team1Ids.length > 0 ? team1Ids : edisTechnicians.map(p => p.id));
+                                    setCalendarFilter('custom');
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-sky-50 text-sky-800 hover:bg-sky-100 transition-colors cursor-pointer border border-sky-200/60"
+                            >
+                                EDIS 1
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const team2Ids = edisTechnicians
+                                        .filter(p => getProfessionalEdisSubteam(p) === 'EDIS 2')
+                                        .map(p => p.id);
+                                    setSelectedColleagueIds(team2Ids.length > 0 ? team2Ids : edisTechnicians.map(p => p.id));
+                                    setCalendarFilter('custom');
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer border border-emerald-200/60"
+                            >
+                                EDIS 2
+                            </button>
+                            <button
+                                type="button"
+                                onClick={selectAllTechnicians}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-teal-50 hover:text-teal-800 transition-colors cursor-pointer"
+                            >
+                                Todo el EDIS
+                            </button>
+                            <button
+                                type="button"
+                                onClick={clearSelectedColleagues}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
+                            >
+                                Desmarcar
+                            </button>
+                        </div>
+
+                        {/* Search Filter Box */}
+                        <div className="relative mb-3">
+                            <IoSearchOutline className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
+                            <input
+                                type="text"
+                                placeholder="Buscar técnico/a EDIS..."
+                                value={colleagueSearchQuery}
+                                onChange={(e) => setColleagueSearchQuery(e.target.value)}
+                                className="w-full text-xs pl-8 pr-8 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-teal-500 focus:outline-none transition-colors"
+                            />
+                            {colleagueSearchQuery && (
+                                <button
+                                    onClick={() => setColleagueSearchQuery('')}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm cursor-pointer"
+                                >
+                                    <IoCloseOutline />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Colleagues List */}
+                        <div className="overflow-y-auto space-y-1 pr-1 divide-y divide-slate-50 flex-1 min-h-0">
+                            {edisTechnicians
+                                .filter(p => {
+                                    if (!colleagueSearchQuery.trim()) return true;
+                                    const q = colleagueSearchQuery.toLowerCase();
+                                    return p.name.toLowerCase().includes(q) || (p.role && p.role.toLowerCase().includes(q));
+                                })
+                                .map(prof => {
+                                    const isChecked = calendarFilter === 'custom' 
+                                        ? selectedColleagueIds.includes(prof.id)
+                                        : (calendarFilter === 'my_team' 
+                                            ? (currentUserSubteam ? getProfessionalEdisSubteam(prof) === currentUserSubteam : true)
+                                            : (calendarFilter === 'me' ? prof.id === currentUser.id : true));
+                                    const isCurrentUser = prof.id === currentUser?.id;
+                                    const subteam = getProfessionalEdisSubteam(prof);
+
+                                    return (
+                                        <div
+                                            key={prof.id}
+                                            className={`flex items-center justify-between p-2 rounded-xl transition-colors cursor-pointer group ${
+                                                isChecked 
+                                                    ? 'bg-teal-50/90 border border-teal-200/80 shadow-2xs' 
+                                                    : 'hover:bg-slate-50 border border-transparent'
+                                            }`}
+                                            onClick={() => toggleColleague(prof.id)}
+                                        >
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={() => {}} // handled by parent onClick
+                                                    className="w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-teal-500 pointer-events-none"
+                                                />
+                                                <TechnicianAvatar professional={prof} size="sm" />
+                                                <div className="min-w-0">
+                                                    <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5 truncate">
+                                                        <span>{prof.name}</span>
+                                                        {subteam === 'EDIS 1' && (
+                                                            <span className="text-[9px] bg-sky-100 text-sky-800 font-bold px-1.5 py-0.2 rounded-full border border-sky-200">
+                                                                EDIS 1
+                                                            </span>
+                                                        )}
+                                                        {subteam === 'EDIS 2' && (
+                                                            <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded-full border border-emerald-200">
+                                                                EDIS 2
+                                                            </span>
+                                                        )}
+                                                        {subteam === 'EDIS General' && (
+                                                            <span className="text-[9px] bg-teal-100 text-teal-800 font-bold px-1.5 py-0.2 rounded-full border border-teal-200">
+                                                                EDIS
+                                                            </span>
+                                                        )}
+                                                        {isCurrentUser && (
+                                                            <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded">
+                                                                Tú
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500 truncate">
+                                                        {prof.role}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {!isCurrentUser && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            selectMeAndColleague(prof.id);
+                                                        }}
+                                                        className="px-2 py-0.5 text-[11px] font-bold rounded-md bg-teal-100 hover:bg-teal-200 text-teal-800 cursor-pointer"
+                                                        title={`Ver mi agenda + ${prof.name}`}
+                                                    >
+                                                        Yo + {prof.name.split(' ')[0]}
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        selectOnlyColleague(prof.id);
+                                                    }}
+                                                    className="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 cursor-pointer"
+                                                    title={`Ver solo a ${prof.name}`}
+                                                >
+                                                    Solo
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                            <span className="text-xs font-medium text-slate-500">
+                                {selectedColleagueIds.length} seleccionado(s)
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setIsMultiSelectOpen(false)}
+                                className="px-4 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-2xs"
+                            >
+                                Listo / Aplicar selección
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
                     {/* Shared Calendar Analysis & Coordination Toolbar (Visible when 2+ calendars are displayed) */}
                     {isSharedViewActive && (

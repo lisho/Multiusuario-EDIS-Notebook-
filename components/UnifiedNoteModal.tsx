@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Case, MyNote, Professional, Task, User, ProfessionalRole } from '../types';
+import { Case, MyNote, Professional, Task, User, ProfessionalRole, isEdisProfessional } from '../types';
 import { IoCloseOutline, IoSaveOutline, IoDocumentTextOutline, IoCheckboxOutline, IoPeopleOutline } from 'react-icons/io5';
 
 export type UnifiedItemType = 'note' | 'task';
@@ -52,11 +52,7 @@ const UnifiedNoteModal: React.FC<UnifiedNoteModalProps> = ({
     const [error, setError] = useState<string | null>(null);
 
     const availableProfessionals = useMemo(() => {
-        const edisList = professionals.filter(p => 
-            p.role === ProfessionalRole.EdisTechnician || 
-            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
-            p.role !== ProfessionalRole.SocialWorker
-        );
+        const edisList = professionals.filter(isEdisProfessional);
         if (caseId) {
             const selectedCase = cases.find(c => c.id === caseId);
             if (selectedCase?.professionalIds && selectedCase.professionalIds.length > 0) {

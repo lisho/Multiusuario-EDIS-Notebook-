@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MyNote, Professional, ProfessionalRole, User } from '../types';
+import { MyNote, Professional, ProfessionalRole, User, isEdisProfessional } from '../types';
 import { IoCloseOutline, IoSaveOutline, IoPersonOutline } from 'react-icons/io5';
 
 interface NoteEditorModalProps {
@@ -36,11 +36,7 @@ const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
     const [assignedTo, setAssignedTo] = useState<string[]>([]);
 
     const availableProfessionals = React.useMemo(() => {
-        const edisProfs = professionals.filter(p => 
-            p.role === ProfessionalRole.EdisTechnician || 
-            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
-            p.role !== ProfessionalRole.SocialWorker
-        );
+        const edisProfs = professionals.filter(isEdisProfessional);
         if (caseProfessionalIds && caseProfessionalIds.length > 0) {
             const caseProfs = edisProfs.filter(p => caseProfessionalIds.includes(p.id));
             return caseProfs.length > 0 ? caseProfs : edisProfs;

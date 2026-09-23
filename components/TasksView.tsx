@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Task, Professional, Case, User, ProfessionalRole } from '../types';
+import { Task, Professional, Case, User, ProfessionalRole, isEdisProfessional } from '../types';
 import { IoAddOutline, IoTrashOutline, IoArrowRedoOutline, IoPencilOutline, IoPersonOutline, IoCheckmarkCircle } from 'react-icons/io5';
 import TechnicianAvatar from './TechnicianAvatar';
 
@@ -30,7 +30,7 @@ const TaskItem: React.FC<{
 
     const assignedProfs = (task.assignedTo || [])
         .map(id => professionals.find(p => p.id === id))
-        .filter(p => p && (p.role === ProfessionalRole.EdisTechnician || p.role !== ProfessionalRole.SocialWorker)) as Professional[];
+        .filter(p => isEdisProfessional(p)) as Professional[];
 
     const handleSaveEdit = () => {
         if (editText.trim() && editText.trim() !== task.text) {
@@ -113,11 +113,7 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
     
     // Only EDIS Technicians can be assigned tasks
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => 
-            p.role === ProfessionalRole.EdisTechnician || 
-            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
-            p.role !== ProfessionalRole.SocialWorker
-        );
+        return professionals.filter(isEdisProfessional);
     }, [professionals]);
 
     const teamProfessionals = useMemo(() => {

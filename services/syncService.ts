@@ -30,12 +30,18 @@ export function normalizeProfessionals(docs: { id: string; data: () => any }[]):
         const data = doc.data();
         const prof: Professional = { id: doc.id, ...data } as Professional;
 
-        if (prof.role === ProfessionalRole.EdisTechnician) {
+        const isSystemEligible = 
+            prof.role === ProfessionalRole.EdisTechnician ||
+            prof.role === ProfessionalRole.Edis1 ||
+            prof.role === ProfessionalRole.Edis2 ||
+            prof.role === ProfessionalRole.Administrator;
+
+        if (isSystemEligible) {
             if (prof.isSystemUser === undefined) {
                 prof.isSystemUser = true;
             }
             if (prof.isSystemUser && !prof.systemRole) {
-                prof.systemRole = prof.name === 'Lisho' ? 'admin' : 'tecnico';
+                prof.systemRole = (prof.name === 'Lisho' || prof.role === ProfessionalRole.Administrator) ? 'admin' : 'tecnico';
             }
         } else {
             if (prof.isSystemUser === undefined) {

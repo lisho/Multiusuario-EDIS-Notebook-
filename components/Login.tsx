@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Professional } from '../types';
+import { Professional, ProfessionalRole } from '../types';
 import { IoLogInOutline, IoChevronDownOutline, IoEyeOutline, IoEyeOffOutline } from 'react-icons/io5';
 
 interface LoginProps {
@@ -17,7 +17,9 @@ const Login: React.FC<LoginProps> = ({ professionals, onLogin, authError }) => {
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     const systemUsers = useMemo(() => {
-        return professionals.sort((a, b) => a.name.localeCompare(b.name));
+        return professionals
+            .filter(p => p.role !== 'Trabajador/a Social' && p.role !== ProfessionalRole.SocialWorker && p.isSystemUser !== false)
+            .sort((a, b) => a.name.localeCompare(b.name));
     }, [professionals]);
 
     useEffect(() => {
