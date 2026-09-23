@@ -627,9 +627,13 @@ const TasksSidePanel: React.FC<TasksSidePanelProps> = (props) => {
     const [selectedColor, setSelectedColor] = useState<'yellow' | 'pink' | 'blue' | 'green'>('yellow');
     const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
     
-    // Strictly filter EDIS Technicians for task assignment
+    // Filter EDIS Technicians for task assignment
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+        return professionals.filter(p => 
+            p.role === ProfessionalRole.EdisTechnician || 
+            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
+            p.role !== ProfessionalRole.SocialWorker
+        );
     }, [professionals]);
 
     // Filter & Search State

@@ -43,6 +43,13 @@ const CalendarSearchModal: React.FC<CalendarSearchModalProps> = ({
         return false;
     };
 
+    const canEditOrEnter = (intervention: Intervention): boolean => {
+        if (!currentUser) return false;
+        if (currentUser.role === 'admin') return true;
+        const isAssigned = (intervention.assignedTo && Array.isArray(intervention.assignedTo) && intervention.assignedTo.includes(currentUser.id)) || intervention.createdBy === currentUser.id;
+        return Boolean(isAssigned);
+    };
+
     const getAssociatedProfessionals = (intervention: Intervention, caseInfo: Case | null | undefined): Professional[] => {
         const found = new Map<string, Professional>();
 
@@ -135,20 +142,29 @@ const CalendarSearchModal: React.FC<CalendarSearchModalProps> = ({
                         <ul className="space-y-1">
                             {filteredInterventions.map(intervention => {
                                 const canView = isFullDetailsAuthorized(intervention);
+                                const canEnter = canEditOrEnter(intervention);
                                 const caseInfo = canView && intervention.caseId ? cases.find(c => c.id === intervention.caseId) : null;
                                 const associatedProfs = getAssociatedProfessionals(intervention, caseInfo);
 
                                 return (
                                     <li key={intervention.id}>
                                         <button
+                                            type="button"
                                             onClick={() => {
+                                                if (!canEnter) return;
                                                 onSelectIntervention(intervention);
                                                 onClose();
                                             }}
-                                            className="w-full text-left p-3 hover:bg-slate-50 rounded-lg transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2 border border-transparent hover:border-slate-100 group cursor-pointer"
+                                            disabled={!canEnter}
+                                            className={`w-full text-left p-3 rounded-lg transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2 border border-transparent ${
+                                                canEnter 
+                                                    ? 'hover:bg-slate-50 hover:border-slate-100 group cursor-pointer' 
+                                                    : 'opacity-80 bg-slate-50/50 cursor-not-allowed hover:bg-slate-50/80'
+                                            }`}
+                                            title={canEnter ? 'Clic para ver o editar la cita' : 'Solo lectura: no estás asignado/a a esta cita'}
                                         >
                                             <div className="flex flex-col flex-1 min-w-0 pr-2">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 flex-wrap">
                                                     {!canView ? (
                                                         <span className="font-semibold text-slate-700 truncate flex items-center gap-1.5">
                                                             <IoLockClosedOutline className="text-amber-600 flex-shrink-0" />
@@ -160,6 +176,11 @@ const CalendarSearchModal: React.FC<CalendarSearchModalProps> = ({
                                                                 <IoLockClosedOutline className="text-amber-600 flex-shrink-0" title="Cita privada" />
                                                             )}
                                                             {caseInfo ? `${caseInfo.name.split(' ')[0]} - ` : ''}{intervention.title}
+                                                        </span>
+                                                    )}
+                                                    {!canEnter && (
+                                                        <span className="text-[10px] font-semibold bg-amber-100 text-amber-900 border border-amber-200/80 px-1.5 py-0.2 rounded-md">
+                                                            🔒 Solo lectura
                                                         </span>
                                                     )}
                                                 </div>

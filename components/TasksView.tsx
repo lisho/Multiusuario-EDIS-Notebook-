@@ -30,7 +30,7 @@ const TaskItem: React.FC<{
 
     const assignedProfs = (task.assignedTo || [])
         .map(id => professionals.find(p => p.id === id))
-        .filter(p => p && p.role === ProfessionalRole.EdisTechnician) as Professional[];
+        .filter(p => p && (p.role === ProfessionalRole.EdisTechnician || p.role !== ProfessionalRole.SocialWorker)) as Professional[];
 
     const handleSaveEdit = () => {
         if (editText.trim() && editText.trim() !== task.text) {
@@ -113,7 +113,11 @@ const TasksView: React.FC<TasksViewProps> = (props) => {
     
     // Only EDIS Technicians can be assigned tasks
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+        return professionals.filter(p => 
+            p.role === ProfessionalRole.EdisTechnician || 
+            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
+            p.role !== ProfessionalRole.SocialWorker
+        );
     }, [professionals]);
 
     const teamProfessionals = useMemo(() => {

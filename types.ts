@@ -5,6 +5,7 @@ export interface User {
     id: string; // Corresponds to the Professional ID
     name: string;
     role: 'admin' | 'tecnico';
+    avatar?: string;
 }
 
 export enum CaseStatus {

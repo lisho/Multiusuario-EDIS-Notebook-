@@ -91,7 +91,7 @@ const ProfessionalSection: React.FC<{
 
 // FIX: Changed to a named export to resolve the "Module has no default export" error.
 export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
-  const { tools, onSaveTool, onDeleteTool, professionals, onSaveProfessional, onDeleteProfessional, cases, onBatchAddInterventions, generalInterventions, onSaveIntervention, onBatchUpdateInterventions, onDeleteIntervention, onBatchDeleteInterventions, requestConfirmation } = props;
+  const { tools, onSaveTool, onDeleteTool, professionals, onSaveProfessional, onDeleteProfessional, cases, onBatchAddInterventions, generalInterventions, onSaveIntervention, onBatchUpdateInterventions, onDeleteIntervention, onBatchDeleteInterventions, requestConfirmation, currentUser } = props;
   const [activeTab, setActiveTab] = useState<AdminTab>('stats');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingTool, setEditingTool] = useState<AdminTool | null>(null);

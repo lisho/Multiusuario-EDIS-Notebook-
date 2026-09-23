@@ -41,7 +41,7 @@ export const AdminStatsDashboard: React.FC<AdminStatsDashboardProps> = ({ cases,
     }, [cases, professionals]);
 
     const casesByEdisData = useMemo(() => professionals
-        .filter(p => p.role === ProfessionalRole.EdisTechnician && p.systemRole !== 'admin')
+        .filter(p => p.role === ProfessionalRole.EdisTechnician)
         .map((p): { label: string; value: number } => ({ label: p.name, value: casesPerProfessional[p.id] || 0 }))
         .filter(p => p.value > 0)
         .sort((a, b) => b.value - a.value), [professionals, casesPerProfessional]);

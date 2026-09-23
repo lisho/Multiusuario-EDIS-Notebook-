@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Case, Task, MyNote, User, Professional, ProfessionalRole } from '../types';
+import { Case, Task, MyNote, User, Professional, ProfessionalRole, DashboardView } from '../types';
 import { 
     IoAddOutline, 
     IoCheckbox, 
@@ -33,7 +33,7 @@ interface AllNotesViewProps {
     onDeleteItem: (id: string, type: 'note' | 'task', caseId: string | null) => void;
     onToggleTask: (id: string, caseId: string | null) => void;
     professionals?: Professional[];
-    onSelectCaseById?: (caseId: string, view?: 'profile' | 'timeline' | 'tasks' | 'notes') => void;
+    onSelectCaseById?: (caseId: string, view?: DashboardView) => void;
     onTaskToEntry?: (task: Task, caseId: string) => void;
 }
 
@@ -87,7 +87,11 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
 
     // Filtered EDIS technicians for professional filters
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+        return professionals.filter(p => 
+            p.role === ProfessionalRole.EdisTechnician || 
+            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
+            p.role !== ProfessionalRole.SocialWorker
+        );
     }, [professionals]);
 
     const isVisibleToUser = (item: { createdBy?: string; assignedTo?: string[] }) => {
@@ -307,7 +311,7 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
             if (onTaskToEntry) {
                 onTaskToEntry(taskObj, item.caseId);
             } else if (onSelectCaseById) {
-                onSelectCaseById(item.caseId, 'timeline');
+                onSelectCaseById(item.caseId, 'notebook');
             }
         } else {
             // General task: open modal to select which case notebook to pass it to
@@ -321,7 +325,7 @@ const AllNotesView: React.FC<AllNotesViewProps> = ({
         if (onTaskToEntry) {
             onTaskToEntry(taskForNotebook.task, targetCaseForNotebook);
         } else if (onSelectCaseById) {
-            onSelectCaseById(targetCaseForNotebook, 'timeline');
+            onSelectCaseById(targetCaseForNotebook, 'notebook');
         }
         setTaskForNotebook(null);
     };

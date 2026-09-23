@@ -77,7 +77,6 @@ const getInitialState = (itemData: Intervention | (Partial<Intervention> & { has
         isAllDay: false,
         notes: '',
         isRegistered: false,
-        isShared: itemData?.isShared !== undefined ? itemData.isShared : true,
         caseId: null,
         status: InterventionStatus.Planned,
         ...itemData,
@@ -99,18 +98,17 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
     const isEditing = itemData && 'id' in itemData;
 
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+        return professionals.filter(p => 
+            p.role === ProfessionalRole.EdisTechnician || 
+            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
+            p.role !== ProfessionalRole.SocialWorker
+        );
     }, [professionals]);
 
-    // Check if the selected case has other assigned professionals (e.g. Social Worker, Educator, etc.)
-    const caseOtherProfessionals = useMemo(() => {
-        if (!formData.caseId) return [];
-        const currentCase = cases.find(c => c.id === formData.caseId);
-        if (!currentCase || !currentCase.professionalIds) return [];
-        return professionals.filter(p => 
-            currentCase.professionalIds?.includes(p.id) && p.role !== ProfessionalRole.EdisTechnician
-        );
-    }, [formData.caseId, cases, professionals]);
+    // Check if the current user is allowed to assign/reassign technicians: only the creator of the event or admin
+    const creatorId = formData.createdBy || (isEditing ? (itemData as Intervention)?.createdBy : currentUser?.id);
+    const creatorProfessional = creatorId ? professionals.find(p => p.id === creatorId) : null;
+    const canAssignTechnicians = !isEditing || !creatorId || creatorId === currentUser?.id || currentUser?.role === 'admin';
 
     const isOnlyMeSelected = Boolean(
         currentUser?.id && 
@@ -124,15 +122,17 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
     );
 
     const handleSelectOnlyMe = () => {
-        if (!currentUser) return;
+        if (!currentUser || !canAssignTechnicians) return;
         setFormData(prev => ({ ...prev, assignedTo: [currentUser.id] }));
     };
 
     const handleSelectAllEdis = () => {
+        if (!canAssignTechnicians) return;
         setFormData(prev => ({ ...prev, assignedTo: edisTechnicians.map(t => t.id) }));
     };
 
     const handleClearAssigned = () => {
+        if (!canAssignTechnicians) return;
         setFormData(prev => ({ ...prev, assignedTo: [] }));
     };
 
@@ -271,9 +271,12 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (validate()) {
-            const finalAssignedTo = (formData.assignedTo && formData.assignedTo.length > 0)
-                ? formData.assignedTo
-                : (currentUser?.id ? [currentUser.id] : []);
+            // If the user cannot assign technicians (not the creator or admin), preserve original assignments
+            const finalAssignedTo = !canAssignTechnicians && isEditing && (itemData as Intervention)?.assignedTo
+                ? (itemData as Intervention).assignedTo
+                : ((formData.assignedTo && formData.assignedTo.length > 0)
+                    ? formData.assignedTo
+                    : (currentUser?.id ? [currentUser.id] : []));
 
             onSaveIntervention({
                 ...formData,
@@ -385,10 +388,27 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
-                        <label htmlFor="isAllDay" className="flex items-center gap-2 text-slate-700 cursor-pointer">
-                            <input id="isAllDay" name="isAllDay" type="checkbox" checked={!!formData.isAllDay} onChange={handleChange} className="h-5 w-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
-                            <span>Todo el día</span>
+                    <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl">
+                        <label htmlFor="isAllDay" className="flex items-start gap-2.5 cursor-pointer">
+                            <input 
+                                id="isAllDay" 
+                                name="isAllDay" 
+                                type="checkbox" 
+                                checked={!!formData.isAllDay} 
+                                onChange={handleChange} 
+                                className="mt-0.5 h-5 w-5 rounded border-amber-300 text-amber-600 focus:ring-amber-500 cursor-pointer" 
+                            />
+                            <div className="select-none flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-sm text-slate-800">📋 Acción a realizar a lo largo del día</span>
+                                    <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded-md">
+                                        Sin hora prefijada (Horario libre)
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-600 mt-0.5">
+                                    Actúa como una tarea o gestión a completar en esta fecha sin bloquear franjas horarias específicas de tu agenda.
+                                </p>
+                            </div>
                         </label>
                     </div>
                     
@@ -449,55 +469,68 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
                     </div>
 
                     <div>
+                    {/* Sección de Asignación de Técnicos EDIS */}
+                    <div className="pt-2 border-t border-slate-200">
                         <div className="flex items-center justify-between mb-2">
                             <label className="block text-slate-700 font-semibold text-sm">
-                                Asignar a Técnicos / Profesionales (Calendario y Agenda)
+                                Asignar a Técnicos EDIS (Calendario y Agenda)
                             </label>
                             <span className="text-xs text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full font-medium border border-teal-200">
                                 {(formData.assignedTo || []).length} seleccionado{(formData.assignedTo || []).length === 1 ? '' : 's'}
                             </span>
                         </div>
 
-                        {/* Botones de selección rápida */}
-                        <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                            {currentUser && (
-                                <button
-                                    type="button"
-                                    onClick={handleSelectOnlyMe}
-                                    className={`text-xs px-2.5 py-1 rounded-md font-medium border transition-colors ${
-                                        isOnlyMeSelected
-                                            ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
-                                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    Solo a mí
-                                </button>
-                            )}
-                            {edisTechnicians.length > 1 && (
-                                <button
-                                    type="button"
-                                    onClick={handleSelectAllEdis}
-                                    className={`text-xs px-2.5 py-1 rounded-md font-medium border transition-colors ${
-                                        isAllEdisSelected
-                                            ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
-                                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    Todo el equipo EDIS ({edisTechnicians.length})
-                                </button>
-                            )}
-                            {(formData.assignedTo || []).length > 0 && (
-                                <button
-                                    type="button"
-                                    onClick={handleClearAssigned}
-                                    className="text-xs px-2 py-1 rounded-md font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors ml-auto"
-                                >
-                                    Desmarcar todos
-                                </button>
-                            )}
-                        </div>
+                        {!canAssignTechnicians && (
+                            <div className="flex items-center gap-2 p-2.5 mb-2 rounded-lg bg-amber-50 border border-amber-200/90 text-amber-900 text-xs">
+                                <IoLockClosedOutline className="text-amber-700 text-base flex-shrink-0" />
+                                <span>
+                                    <strong>Asignación bloqueada:</strong> Solo la persona que ha creado esta actuación ({creatorProfessional ? creatorProfessional.name : 'el creador inicial'}) o un administrador puede modificar los técnicos asignados.
+                                </span>
+                            </div>
+                        )}
 
-                        <div className="p-2.5 bg-slate-50 border border-slate-300 rounded-lg max-h-48 overflow-y-auto space-y-1">
+                        {/* Botones de selección rápida */}
+                        {canAssignTechnicians && (
+                            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                                {currentUser && (
+                                    <button
+                                        type="button"
+                                        onClick={handleSelectOnlyMe}
+                                        className={`text-xs px-2.5 py-1 rounded-md font-medium border transition-colors ${
+                                            isOnlyMeSelected
+                                                ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        Solo a mí
+                                    </button>
+                                )}
+                                {edisTechnicians.length > 1 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleSelectAllEdis}
+                                        className={`text-xs px-2.5 py-1 rounded-md font-medium border transition-colors ${
+                                            isAllEdisSelected
+                                                ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        Todo el equipo EDIS ({edisTechnicians.length})
+                                    </button>
+                                )}
+                                {(formData.assignedTo || []).length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleClearAssigned}
+                                        className="text-xs px-2 py-1 rounded-md font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors ml-auto"
+                                    >
+                                        Desmarcar todos
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        <div className={`p-2.5 bg-slate-50 border border-slate-300 rounded-lg max-h-48 overflow-y-auto space-y-1 ${!canAssignTechnicians ? 'opacity-85' : ''}`}>
                             {edisTechnicians.length === 0 ? (
                                 <p className="text-xs text-slate-500 p-2 text-center">No hay técnicos EDIS registrados.</p>
                             ) : (
@@ -506,70 +539,46 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
                                     return (
                                         <label 
                                             key={p.id} 
-                                            className={`flex items-center gap-2.5 cursor-pointer p-1.5 rounded-md transition-colors ${
+                                            className={`flex items-center gap-2.5 p-1.5 rounded-md transition-colors ${
+                                                canAssignTechnicians ? 'cursor-pointer' : 'cursor-not-allowed'
+                                            } ${
                                                 isSelected ? 'bg-teal-50 border border-teal-200/80 text-teal-900' : 'hover:bg-slate-100 text-slate-800'
                                             }`}
                                         >
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
+                                                disabled={!canAssignTechnicians}
                                                 onChange={() => {
+                                                    if (!canAssignTechnicians) return;
                                                     const current = formData.assignedTo || [];
                                                     const updated = current.includes(p.id)
                                                         ? current.filter(id => id !== p.id)
                                                         : [...current, p.id];
                                                     setFormData(prev => ({ ...prev, assignedTo: updated }));
                                                 }}
-                                                className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                                                className={`h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 ${
+                                                    canAssignTechnicians ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                                                }`}
                                             />
                                             <span className="text-sm font-medium flex items-center gap-1.5">
                                                 {p.name}
                                                 {currentUser?.id === p.id && (
                                                     <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-semibold">Tú</span>
                                                 )}
+                                                {creatorId === p.id && (
+                                                    <span className="text-[10px] bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.2 rounded font-semibold">Creador/a</span>
+                                                )}
                                             </span>
                                         </label>
                                     );
                                 })
                             )}
-
-                            {caseOtherProfessionals.length > 0 && (
-                                <div className="pt-2 mt-2 border-t border-slate-200">
-                                    <p className="text-[11px] font-semibold text-slate-500 mb-1 px-1">Otros profesionales del caso:</p>
-                                    {caseOtherProfessionals.map(p => {
-                                        const isSelected = (formData.assignedTo || []).includes(p.id);
-                                        return (
-                                            <label 
-                                                key={p.id} 
-                                                className={`flex items-center gap-2.5 cursor-pointer p-1.5 rounded-md transition-colors ${
-                                                    isSelected ? 'bg-teal-50 border border-teal-200/80 text-teal-900' : 'hover:bg-slate-100 text-slate-800'
-                                                }`}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSelected}
-                                                    onChange={() => {
-                                                        const current = formData.assignedTo || [];
-                                                        const updated = current.includes(p.id)
-                                                            ? current.filter(id => id !== p.id)
-                                                            : [...current, p.id];
-                                                        setFormData(prev => ({ ...prev, assignedTo: updated }));
-                                                    }}
-                                                    className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
-                                                />
-                                                <span className="text-sm font-medium flex items-center gap-1.5">
-                                                    {p.name}
-                                                    <span className="text-xs text-slate-500">({p.role})</span>
-                                                </span>
-                                            </label>
-                                        );
-                                    })}
-                                </div>
-                            )}
                         </div>
                         <p className="text-xs text-slate-500 mt-1">
-                            Los técnicos asignados verán esta actuación automáticamente en su calendario y en la agenda de hoy.
+                            Solo el personal del equipo EDIS puede asignarse a citas y actuaciones.
                         </p>
+                    </div>
                     </div>
 
                     <div>

@@ -26,7 +26,11 @@ const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose, onAddTask,
 
   // Strictly filter only EDIS Technicians for task assignment
   const edisTechnicians = useMemo(() => {
-    return professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+    return professionals.filter(p => 
+      p.role === ProfessionalRole.EdisTechnician || 
+      (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
+      p.role !== ProfessionalRole.SocialWorker
+    );
   }, [professionals]);
 
   // If a case is selected, check which EDIS technicians are assigned to that case

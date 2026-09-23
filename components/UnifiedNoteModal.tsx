@@ -52,7 +52,11 @@ const UnifiedNoteModal: React.FC<UnifiedNoteModalProps> = ({
     const [error, setError] = useState<string | null>(null);
 
     const availableProfessionals = useMemo(() => {
-        const edisList = professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+        const edisList = professionals.filter(p => 
+            p.role === ProfessionalRole.EdisTechnician || 
+            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
+            p.role !== ProfessionalRole.SocialWorker
+        );
         if (caseId) {
             const selectedCase = cases.find(c => c.id === caseId);
             if (selectedCase?.professionalIds && selectedCase.professionalIds.length > 0) {
@@ -131,7 +135,9 @@ const UnifiedNoteModal: React.FC<UnifiedNoteModalProps> = ({
         setType(newType);
         // If changing to task, ensure assignedTo contains valid technicians
         if (newType === 'task') {
-            const edisIds = professionals.filter(p => p.role === ProfessionalRole.EdisTechnician).map(p => p.id);
+            const edisIds = professionals
+                .filter(p => p.role === ProfessionalRole.EdisTechnician || (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) || p.role !== ProfessionalRole.SocialWorker)
+                .map(p => p.id);
             setAssignedTo(prev => {
                 const filtered = prev.filter(id => edisIds.includes(id));
                 return filtered.length > 0 ? filtered : (currentUser?.id && edisIds.includes(currentUser.id) ? [currentUser.id] : (edisIds[0] ? [edisIds[0]] : []));

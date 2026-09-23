@@ -20,7 +20,10 @@ import {
     IoFilterOutline,
     IoPersonAddOutline,
     IoChevronDownOutline,
-    IoCloseCircleOutline
+    IoCloseCircleOutline,
+    IoSparklesOutline,
+    IoColorPaletteOutline,
+    IoFlashOutline
 } from 'react-icons/io5';
 
 interface CalendarViewProps {
@@ -40,6 +43,47 @@ const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const HOUR_HEIGHT = 96; // in pixels (increased from 60 to provide ample room for title, time, notes, and avatars)
 const START_HOUR = 8;
 const END_HOUR = 20;
+const COMMON_FREE_START_HOUR = 8; // Restricción horaria: 8:00
+const COMMON_FREE_END_HOUR = 15;   // Restricción horaria: 15:00
+
+// Paleta de colores armónica y contrastada para cada técnico/a
+export interface TechnicianColorConfig {
+    bg: string;
+    text: string;
+    border: string;
+    badgeBg: string;
+    badgeText: string;
+    dot: string;
+    ring: string;
+    name: string;
+}
+
+export const TECHNICIAN_PALETTES: TechnicianColorConfig[] = [
+    { bg: '#eff6ff', text: '#1e3a8a', border: '#3b82f6', badgeBg: '#dbeafe', badgeText: '#1e40af', dot: '#2563eb', ring: '#93c5fd', name: 'Azul' },
+    { bg: '#f0fdf4', text: '#14532d', border: '#22c55e', badgeBg: '#dcfce7', badgeText: '#166534', dot: '#16a34a', ring: '#86efac', name: 'Verde' },
+    { bg: '#faf5ff', text: '#581c87', border: '#a855f7', badgeBg: '#f3e8ff', badgeText: '#6b21a8', dot: '#9333ea', ring: '#d8b4fe', name: 'Morado' },
+    { bg: '#fff7ed', text: '#7c2d12', border: '#f97316', badgeBg: '#ffedd5', badgeText: '#9a3412', dot: '#ea580c', ring: '#fdba74', name: 'Naranja' },
+    { bg: '#fdf2f8', text: '#831843', border: '#ec4899', badgeBg: '#fce7f3', badgeText: '#9d174d', dot: '#db2777', ring: '#f9a8d4', name: 'Rosa' },
+    { bg: '#ecfeff', text: '#164e63', border: '#06b6d4', badgeBg: '#cffafe', badgeText: '#155e75', dot: '#0891b2', ring: '#67e8f9', name: 'Cian' },
+    { bg: '#fefce8', text: '#713f12', border: '#eab308', badgeBg: '#fef9c3', badgeText: '#854d0e', dot: '#ca8a04', ring: '#fde047', name: 'Ámbar' },
+    { bg: '#f0fdfa', text: '#134e4a', border: '#14b8a6', badgeBg: '#ccfbf1', badgeText: '#115e59', dot: '#0d9488', ring: '#5eead4', name: 'Turquesa' },
+    { bg: '#fff1f2', text: '#881337', border: '#f43f5e', badgeBg: '#ffe4e6', badgeText: '#9f1239', dot: '#e11d48', ring: '#fda4af', name: 'Rojo suave' },
+    { bg: '#f5f3ff', text: '#3b0764', border: '#8b5cf6', badgeBg: '#ede9fe', badgeText: '#4c1d95', dot: '#7c3aed', ring: '#c4b5fd', name: 'Índigo' },
+];
+
+export const getProfessionalColorConfig = (profId: string | undefined, allProfs: Professional[]): TechnicianColorConfig => {
+    if (!profId) return TECHNICIAN_PALETTES[0];
+    const idx = allProfs.findIndex(p => p.id === profId);
+    if (idx >= 0) {
+        return TECHNICIAN_PALETTES[idx % TECHNICIAN_PALETTES.length];
+    }
+    let hash = 0;
+    for (let i = 0; i < profId.length; i++) {
+        hash = (hash << 5) - hash + profId.charCodeAt(i);
+        hash |= 0;
+    }
+    return TECHNICIAN_PALETTES[Math.abs(hash) % TECHNICIAN_PALETTES.length];
+};
 
 // FIX: Add missing general intervention types to satisfy Record<InterventionType, ...>
 const interventionTypeColors: Record<InterventionType, { backgroundColor: string, color: string, borderLeftColor: string }> = {
@@ -204,6 +248,20 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         item: Intervention | null;
         initialValues?: Partial<Intervention>;
     }>({ item: null, initialValues: undefined });
+
+    // Nuevos estados para vistas compartidas:
+    // 1. Modo de color: por tipo de cita o por técnico/a
+    const [colorMode, setColorMode] = useState<'by-type' | 'by-technician'>('by-type');
+    // 2. Resaltar huecos comunes libres
+    const [highlightFreeSlots, setHighlightFreeSlots] = useState<boolean>(true);
+    // 3. Resaltar tareas conjuntas entre los calendarios mostrados
+    const [highlightJointTasks, setHighlightJointTasks] = useState<boolean>(true);
+    // 4. Aviso modal de acceso restringido para citas donde el técnico no está asignado
+    const [restrictedAccessNotice, setRestrictedAccessNotice] = useState<{
+        isOpen: boolean;
+        title: string;
+        associatedNames: string;
+    }>({ isOpen: false, title: '', associatedNames: '' });
     
     // Close multi-select popover when clicking outside
     useEffect(() => {
@@ -230,9 +288,37 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         return false;
     };
 
+    // Determina si el usuario actual tiene permisos para entrar en la cita y editar su información
+    // Un técnico NO debe poder editar las citas en las que no aparece asignado (ni entrar en su modal)
+    const canEditOrEnterEvent = (event: Intervention): boolean => {
+        if (currentUser.role === 'admin') return true;
+        const isAssigned = (event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.includes(currentUser.id)) || event.createdBy === currentUser.id;
+        return Boolean(isAssigned);
+    };
+
+    // Personal EDIS para asignación y desplegables (todos los técnicos del equipo EDIS, incluidos administradores)
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+        return professionals.filter(p => 
+            p.role === ProfessionalRole.EdisTechnician || 
+            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
+            p.role !== ProfessionalRole.SocialWorker
+        );
     }, [professionals]);
+
+    // Técnicos activos en la vista compartida actual
+    const activeSharedTechnicians = useMemo(() => {
+        if (calendarFilter === 'all') {
+            return edisTechnicians;
+        }
+        if (calendarFilter === 'custom') {
+            return edisTechnicians.filter(p => selectedColleagueIds.includes(p.id));
+        }
+        const meProf = professionals.find(p => p.id === currentUser.id);
+        return meProf ? [meProf] : [];
+    }, [calendarFilter, edisTechnicians, selectedColleagueIds, currentUser, professionals]);
+
+    // Indica si se están comparando múltiples técnicos simultáneamente
+    const isSharedViewActive = activeSharedTechnicians.length > 1;
 
     const toggleColleague = (profId: string) => {
         let next: string[];
@@ -348,6 +434,16 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     };
     
     const handleOpenModal = (item: Intervention | null, initialValues?: Partial<Intervention>) => {
+        if (item && currentUser.role !== 'admin' && !canEditOrEnterEvent(item)) {
+            const caseForEvent = item.caseId ? cases.find(c => c.id === item.caseId) : null;
+            const associatedProfs = getAssociatedProfessionals(item, caseForEvent);
+            setRestrictedAccessNotice({
+                isOpen: true,
+                title: item.title,
+                associatedNames: associatedProfs.map(p => p.name).join(', ') || 'Otros técnicos'
+            });
+            return;
+        }
         let enhancedInitialValues = initialValues;
         if (!item && calendarFilter === 'custom' && selectedColleagueIds.length > 0) {
             enhancedInitialValues = {
@@ -440,25 +536,163 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         return Array.from(found.values());
     };
 
+    // Comprobar si una franja de 30 minutos [hour:minute, hour:minute + 30 min] en targetDay está libre para TODOS los técnicos activos en la vista
+    // NOTA: Únicamente se calculan y resaltan espacios libres comunes dentro de la jornada de 8:00 a 15:00
+    const checkIsCommonFreeSlot = (targetDay: Date, hour: number, minute: number = 0): boolean => {
+        if (!isSharedViewActive || activeSharedTechnicians.length <= 1) return false;
+        
+        // Restricción: sólo resaltar huecos comunes entre las 8:00 y las 15:00
+        if (hour < COMMON_FREE_START_HOUR || hour >= COMMON_FREE_END_HOUR) {
+            return false;
+        }
+
+        const slotStart = new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate(), hour, minute, 0, 0).getTime();
+        const slotEnd = new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate(), hour, minute + 30, 0, 0).getTime();
+
+        for (const tech of activeSharedTechnicians) {
+            const hasConflict = allInterventions.some(event => {
+                const isAssigned = (event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.includes(tech.id)) ||
+                                   event.createdBy === tech.id;
+                if (!isAssigned) return false;
+
+                // Las acciones de día completo son tareas o gestiones a realizar a lo largo del día y NO bloquean tramos horarios específicos de la agenda
+                if (event.isAllDay) {
+                    return false;
+                }
+
+                const evStart = new Date(event.start);
+                const evEnd = new Date(event.end);
+
+                return evStart.getTime() < slotEnd && evEnd.getTime() > slotStart;
+            });
+
+            if (hasConflict) return false;
+        }
+        return true;
+    };
+
+    // Contar cuántos tramos de 30 min libres comunes hay en un día entre 8:00 y 15:00
+    const getCommonFreeSlotsCountForDay = (targetDay: Date): number => {
+        if (!isSharedViewActive) return 0;
+        let count = 0;
+        for (let h = COMMON_FREE_START_HOUR; h < COMMON_FREE_END_HOUR; h++) {
+            if (checkIsCommonFreeSlot(targetDay, h, 0)) count++;
+            if (checkIsCommonFreeSlot(targetDay, h, 30)) count++;
+        }
+        return count;
+    };
+
+    // Total de huecos (y horas equivalentes) libres comunes en el período actual
+    const currentPeriodCommonFreeInfo = useMemo(() => {
+        if (!isSharedViewActive) return { slots: 0, hours: 0 };
+        let totalSlots = 0;
+        if (view === 'day') {
+            totalSlots = getCommonFreeSlotsCountForDay(currentDate);
+        } else if (view === 'week') {
+            const startOfWeek = new Date(currentDate);
+            startOfWeek.setDate(startOfWeek.getDate() - (startOfWeek.getDay() + 6) % 7);
+            for (let d = 0; d < (collapseWeekends ? 5 : 7); d++) {
+                const day = new Date(startOfWeek);
+                day.setDate(day.getDate() + d);
+                totalSlots += getCommonFreeSlotsCountForDay(day);
+            }
+        }
+        return {
+            slots: totalSlots,
+            hours: Number((totalSlots * 0.5).toFixed(1))
+        };
+    }, [currentDate, isSharedViewActive, view, collapseWeekends, allInterventions, activeSharedTechnicians]);
+
+    // Información de si una tarea es conjunta entre los calendarios mostrados
+    const getEventJointInfo = (event: Intervention, associatedProfs: Professional[]) => {
+        if (!isSharedViewActive) {
+            return { isJoint: false, matchingTechs: [], totalAssociated: associatedProfs.length };
+        }
+        const matchingTechs = activeSharedTechnicians.filter(tech => 
+            (event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.includes(tech.id)) ||
+            event.createdBy === tech.id
+        );
+        const isJoint = matchingTechs.length >= 2;
+        return {
+            isJoint,
+            matchingTechs,
+            totalAssociated: associatedProfs.length
+        };
+    };
+
+    // Obtener estilo computado para una cita (por tipo de cita o por técnico/a, más destaque conjunto)
+    const getEventComputedStyle = (event: Intervention, associatedProfs: Professional[]) => {
+        const typeStyle = getInterventionTypeColor(event.interventionType);
+        const jointInfo = getEventJointInfo(event, associatedProfs);
+
+        if (colorMode === 'by-technician') {
+            if (jointInfo.isJoint && highlightJointTasks) {
+                return {
+                    backgroundColor: '#f5f3ff',
+                    color: '#3730a3',
+                    borderLeftColor: '#6366f1',
+                    badgeBg: 'bg-indigo-600 text-white',
+                    isJoint: true,
+                    matchingTechs: jointInfo.matchingTechs,
+                    primaryTech: jointInfo.matchingTechs[0] || associatedProfs[0]
+                };
+            }
+
+            const primaryTech = associatedProfs.find(p => activeSharedTechnicians.some(at => at.id === p.id)) || associatedProfs[0];
+            const techColor = getProfessionalColorConfig(primaryTech?.id, professionals);
+            return {
+                backgroundColor: techColor.bg,
+                color: techColor.text,
+                borderLeftColor: techColor.border,
+                badgeBg: `${techColor.badgeBg} ${techColor.badgeText}`,
+                isJoint: jointInfo.isJoint,
+                matchingTechs: jointInfo.matchingTechs,
+                primaryTech
+            };
+        }
+
+        // Modo predeterminado por tipo de cita
+        const isJointHighlighted = jointInfo.isJoint && highlightJointTasks;
+        return {
+            backgroundColor: typeStyle.backgroundColor,
+            color: typeStyle.color,
+            borderLeftColor: isJointHighlighted ? '#4f46e5' : typeStyle.borderLeftColor,
+            badgeBg: 'bg-black/5 text-slate-700',
+            isJoint: jointInfo.isJoint,
+            matchingTechs: jointInfo.matchingTechs,
+            primaryTech: associatedProfs[0]
+        };
+    };
+
     const EventItem: React.FC<{event: Intervention}> = ({ event }) => {
         const canView = isFullDetailsAuthorized(event);
+        const canEnter = canEditOrEnterEvent(event);
         const caseForEvent = canView && event.caseId ? cases.find(c => c.id === event.caseId) : null;
-        const style = getInterventionTypeColor(event.interventionType);
         const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
+        const computedStyle = getEventComputedStyle(event, associatedProfs);
+        const jointInfo = getEventJointInfo(event, associatedProfs);
 
         const handleClick = (e: React.MouseEvent) => {
             e.stopPropagation();
-            if (canView) {
-                handleOpenModal(event, undefined);
-            } else {
+            if (!canView) {
                 setPrivateEventInfo(event);
+                return;
             }
+            if (!canEnter) {
+                setRestrictedAccessNotice({
+                    isOpen: true,
+                    title: event.title,
+                    associatedNames: associatedProfs.map(p => p.name).join(', ') || 'Otros técnicos'
+                });
+                return;
+            }
+            handleOpenModal(event, undefined);
         };
 
         if (!canView) {
             return (
                 <div
-                    style={{ ...style, borderLeft: `4px solid ${style.borderLeftColor}` }}
+                    style={{ backgroundColor: computedStyle.backgroundColor, color: computedStyle.color, borderLeft: `4px solid ${computedStyle.borderLeftColor}` }}
                     className="text-xs p-1.5 rounded-sm overflow-hidden mb-1 cursor-pointer hover:brightness-95 transition-all shadow-2xs opacity-90"
                     onClick={handleClick}
                     title="Cita privada: pulsa para ver disponibilidad horaria"
@@ -489,15 +723,33 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
 
         return (
             <div
-                style={{ ...style, borderLeft: `4px solid ${style.borderLeftColor}` }}
-                className="text-xs p-1.5 rounded-sm overflow-hidden mb-1 cursor-pointer hover:brightness-95 transition-all shadow-2xs"
+                style={{ backgroundColor: computedStyle.backgroundColor, color: computedStyle.color, borderLeft: `4px solid ${computedStyle.borderLeftColor}` }}
+                className={`text-xs p-1.5 rounded-sm overflow-hidden mb-1 cursor-pointer hover:brightness-95 transition-all shadow-2xs ${
+                    jointInfo.isJoint && highlightJointTasks ? 'ring-1 ring-indigo-400 font-medium' : ''
+                } ${!canEnter ? 'hover:ring-1 hover:ring-amber-400' : ''}`}
                 onClick={handleClick}
+                title={!canEnter ? 'Solo lectura: cita de otros compañeros (no puedes editarla)' : undefined}
             >
                 <div className="flex items-center justify-between gap-1">
                     <div className="font-semibold truncate flex-1 min-w-0 flex items-center gap-1">
                         {event.isShared === false && (
                             <span title="Cita privada (compañeros solo ven Ocupado)">
                                 <IoLockClosedOutline className="text-amber-600 flex-shrink-0 text-xs" />
+                            </span>
+                        )}
+                        {!canEnter && (
+                            <span className="text-[10px] shrink-0 text-amber-700" title="Solo lectura (no asignado/a)">
+                                🔒
+                            </span>
+                        )}
+                        {event.isAllDay && (
+                            <span className="text-[10px] shrink-0 text-amber-700" title="Acción/tarea a realizar a lo largo del día (sin hora prefijada)">
+                                📋
+                            </span>
+                        )}
+                        {jointInfo.isJoint && highlightJointTasks && (
+                            <span className="px-1 py-0.2 text-[9px] font-bold rounded bg-indigo-600 text-white shrink-0 flex items-center gap-0.5" title="Tarea conjunta entre los calendarios activos">
+                                <span>👥</span>
                             </span>
                         )}
                         {caseForEvent ? (
@@ -546,35 +798,57 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     
     const TimedEventItem: React.FC<{event: Intervention}> = ({ event }) => {
         const canView = isFullDetailsAuthorized(event);
+        const canEnter = canEditOrEnterEvent(event);
         const caseForEvent = canView && event.caseId ? cases.find(c => c.id === event.caseId) : null;
-        const style = getInterventionTypeColor(event.interventionType);
-        const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
         const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
+        const computedStyle = getEventComputedStyle(event, associatedProfs);
+        const jointInfo = getEventJointInfo(event, associatedProfs);
+        const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+        const isJointHighlighted = jointInfo.isJoint && highlightJointTasks;
 
         const handleClick = (e: React.MouseEvent) => {
             e.stopPropagation();
-            if (canView) {
-                handleOpenModal(event, undefined);
-            } else {
+            if (!canView) {
                 setPrivateEventInfo(event);
+                return;
             }
+            if (!canEnter) {
+                setRestrictedAccessNotice({
+                    isOpen: true,
+                    title: event.title,
+                    associatedNames: associatedProfs.map(p => p.name).join(', ') || 'Otros técnicos'
+                });
+                return;
+            }
+            handleOpenModal(event, undefined);
         };
 
         if (!canView) {
             return (
                 <div
-                    style={{ ...style, borderLeft: `4px solid ${style.borderLeftColor}` }}
-                    className="text-xs p-2 rounded-md overflow-hidden h-full flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm opacity-90 hover:opacity-100 group select-none hover:shadow-lg hover:z-30 hover:h-auto hover:min-h-full hover:ring-2 hover:ring-amber-500/40"
+                    style={{ backgroundColor: computedStyle.backgroundColor, color: computedStyle.color, borderLeft: `4px solid ${computedStyle.borderLeftColor}` }}
+                    className={`text-xs p-2 rounded-md overflow-hidden h-full flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm opacity-90 hover:opacity-100 group select-none hover:shadow-lg hover:z-30 hover:h-auto hover:min-h-full hover:ring-2 hover:ring-amber-500/40 ${
+                        isJointHighlighted ? 'ring-2 ring-indigo-400/80 shadow-md' : ''
+                    }`}
                     onClick={handleClick}
                     title="Cita privada: pulsa para ver disponibilidad horaria"
                 >
                     <div className="space-y-1.5 min-w-0">
                         {/* Header */}
                         <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-black/5">
-                            <span className="text-[10px] font-bold tracking-wider opacity-90 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 flex items-center gap-1 truncate">
-                                <IoLockClosedOutline className="text-xs" />
-                                <span>{event.interventionType}</span>
-                            </span>
+                            <div className="flex items-center gap-1 truncate">
+                                {isJointHighlighted && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-600 text-white flex items-center gap-1 shrink-0">
+                                        <IoPeopleOutline className="text-xs" />
+                                        <span>Conjunta ({jointInfo.matchingTechs.length})</span>
+                                    </span>
+                                )}
+                                <span className="text-[10px] font-bold tracking-wider opacity-90 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 flex items-center gap-1 truncate">
+                                    <IoLockClosedOutline className="text-xs" />
+                                    <span>{event.interventionType}</span>
+                                </span>
+                            </div>
 
                             {associatedProfs.length > 0 && (
                                 <div className="flex -space-x-1.5 flex-shrink-0 items-center pl-1">
@@ -605,8 +879,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                                     {timeFormat.format(new Date(event.start))} - {timeFormat.format(new Date(event.end))}
                                 </span>
                             ) : (
-                                <span className="inline-block bg-white/90 px-1.5 py-0.5 rounded border border-black/5 font-semibold text-slate-600 text-[10px]">
-                                    Todo el día
+                                <span className="inline-block bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80 font-bold text-amber-800 text-[10px]">
+                                    📋 Acción del día
                                 </span>
                             )}
                         </div>
@@ -617,15 +891,25 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
 
         return (
             <div
-                style={{ ...style, borderLeft: `4px solid ${style.borderLeftColor}` }}
-                className="text-xs p-2 rounded-md overflow-hidden h-full flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm group select-none hover:overflow-visible hover:shadow-xl hover:z-30 hover:h-auto hover:min-h-full hover:ring-2 hover:ring-teal-500/40"
+                style={{ backgroundColor: computedStyle.backgroundColor, color: computedStyle.color, borderLeft: `4px solid ${computedStyle.borderLeftColor}` }}
+                className={`text-xs p-2 rounded-md overflow-hidden h-full flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm group select-none hover:overflow-visible hover:shadow-xl hover:z-30 hover:h-auto hover:min-h-full ${
+                    isJointHighlighted ? 'ring-2 ring-indigo-500/90 shadow-md hover:ring-indigo-600' : 'hover:ring-2 hover:ring-teal-500/40'
+                }`}
                 onClick={handleClick}
             >
                 <div className="space-y-1.5 min-w-0">
-                    {/* Header: Técnicos asignados en la parte superior derecha + Badge de Tipo de Cita */}
+                    {/* Header: Técnicos asignados en la parte superior derecha + Badges */}
                     <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-black/5">
-                        <div className="flex items-center gap-1 min-w-0">
-                            <span className="text-[10px] uppercase font-bold tracking-wider opacity-85 px-1.5 py-0.5 rounded bg-black/5 truncate">
+                        <div className="flex items-center gap-1 min-w-0 flex-wrap">
+                            {isJointHighlighted && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-teal-700 to-indigo-700 text-white flex items-center gap-1 shadow-2xs shrink-0" title={`Tarea compartida entre ${jointInfo.matchingTechs.map(t => t.name).join(', ')}`}>
+                                    <IoPeopleOutline className="text-xs" />
+                                    <span>Conjunta ({jointInfo.matchingTechs.length})</span>
+                                </span>
+                            )}
+                            <span className={`text-[10px] uppercase font-bold tracking-wider opacity-85 px-1.5 py-0.5 rounded truncate ${
+                                colorMode === 'by-technician' ? 'bg-white/80 border border-black/5 font-semibold' : 'bg-black/5'
+                            }`}>
                                 {event.interventionType}
                             </span>
                             {event.isShared === false && (
@@ -681,14 +965,30 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                     </div>
 
                     {/* Hora */}
-                    <div className="pt-0.5">
+                    <div className="pt-0.5 flex items-center justify-between gap-1 flex-wrap">
                         {!event.isAllDay ? (
                             <span className="inline-block bg-white/90 px-1.5 py-0.5 rounded border border-black/5 font-semibold text-slate-700 text-[11px]">
                                 {timeFormat.format(new Date(event.start))} - {timeFormat.format(new Date(event.end))}
                             </span>
                         ) : (
-                            <span className="inline-block bg-white/90 px-1.5 py-0.5 rounded border border-black/5 font-semibold text-slate-600 text-[10px]">
-                                Todo el día
+                            <span className="inline-block bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80 font-bold text-amber-800 text-[10px]">
+                                📋 Acción del día
+                            </span>
+                        )}
+
+                        {colorMode === 'by-technician' && computedStyle.primaryTech && (
+                            <span 
+                                className="text-[10px] font-bold opacity-90 truncate ml-auto flex items-center gap-1 bg-white/75 px-1.5 py-0.5 rounded border border-black/5 shadow-2xs"
+                                title={event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.includes(computedStyle.primaryTech.id)
+                                    ? `Técnico/a asignado/a: ${computedStyle.primaryTech.name}`
+                                    : `Creador/a de la intervención: ${computedStyle.primaryTech.name}`}
+                            >
+                                <span>👤</span>
+                                <span>
+                                    {event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.includes(computedStyle.primaryTech.id)
+                                        ? computedStyle.primaryTech.name.split(' ')[0]
+                                        : `Creador: ${computedStyle.primaryTech.name.split(' ')[0]}`}
+                                </span>
                             </span>
                         )}
                     </div>
@@ -701,9 +1001,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
     const CollapsedWeekendEventItem: React.FC<{event: Intervention}> = ({ event }) => {
         const canView = isFullDetailsAuthorized(event);
         const caseForEvent = canView && event.caseId ? cases.find(c => c.id === event.caseId) : null;
-        const style = getInterventionTypeColor(event.interventionType);
-        const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
         const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
+        const computedStyle = getEventComputedStyle(event, associatedProfs);
+        const jointInfo = getEventJointInfo(event, associatedProfs);
+        const timeFormat = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
 
         const handleClick = (e: React.MouseEvent) => {
             e.stopPropagation();
@@ -719,8 +1020,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
 
         return (
             <div
-                style={{ ...style, borderLeft: `3px solid ${style.borderLeftColor}` }}
-                className="text-[10px] p-1 rounded overflow-hidden h-full flex flex-col items-center justify-center cursor-pointer transition-all shadow-xs group/collapsed relative hover:z-50 hover:ring-2 hover:ring-teal-500 hover:shadow-lg"
+                style={{ backgroundColor: computedStyle.backgroundColor, color: computedStyle.color, borderLeft: `3px solid ${computedStyle.borderLeftColor}` }}
+                className={`text-[10px] p-1 rounded overflow-hidden h-full flex flex-col items-center justify-center cursor-pointer transition-all shadow-xs group/collapsed relative hover:z-50 hover:ring-2 hover:ring-teal-500 hover:shadow-lg ${
+                    jointInfo.isJoint && highlightJointTasks ? 'ring-1 ring-indigo-500' : ''
+                }`}
                 onClick={handleClick}
             >
                 <div className="font-bold text-[9px] text-slate-800 leading-none truncate w-full text-center">
@@ -728,6 +1031,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 </div>
                 {!canView || event.isShared === false ? (
                     <IoLockClosedOutline className="text-[10px] text-amber-700 mt-0.5" />
+                ) : jointInfo.isJoint && highlightJointTasks ? (
+                    <span className="text-[9px] mt-0.5">👥</span>
                 ) : (
                     <span className="w-1.5 h-1.5 rounded-full bg-teal-600 mt-0.5"></span>
                 )}
@@ -813,8 +1118,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         const activeStyle = "bg-white text-teal-700 shadow-sm";
         const inactiveStyle = "bg-transparent text-slate-600 hover:bg-white/60";
 
-        // Filter list of technicians for the selector
-        const techniciansList = professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+        // Filter list of technicians for the selector (strictly EDIS only)
+        const techniciansList = edisTechnicians;
 
         return (
             <div className="space-y-3 mb-6">
@@ -1137,10 +1442,12 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                                     selectedColleagueIds.map(id => {
                                         const prof = professionals.find(p => p.id === id);
                                         if (!prof) return null;
+                                        const profColor = getProfessionalColorConfig(prof.id, professionals);
                                         return (
                                             <span 
                                                 key={id}
-                                                className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-full text-xs font-semibold bg-white border border-teal-300 text-teal-950 shadow-2xs"
+                                                className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-full text-xs font-semibold bg-white border border-slate-300 text-slate-800 shadow-2xs"
+                                                style={colorMode === 'by-technician' ? { borderLeft: `4px solid ${profColor.border}` } : {}}
                                             >
                                                 <TechnicianAvatar professional={prof} size="xs" />
                                                 <span>{prof.name} {prof.id === currentUser?.id ? '(Tú)' : ''}</span>
@@ -1173,6 +1480,126 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                             >
                                 ✕ Volver a mi agenda
                             </button>
+                        </div>
+                    )}
+
+                    {/* Shared Calendar Analysis & Coordination Toolbar (Visible when 2+ calendars are displayed) */}
+                    {isSharedViewActive && (
+                        <div className="mt-1 pt-2.5 border-t border-slate-200/90 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 bg-gradient-to-r from-teal-50/70 via-indigo-50/50 to-white p-2.5 rounded-xl border border-teal-100 shadow-2xs">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[11px] font-extrabold uppercase tracking-wider text-teal-900 flex items-center gap-1.5 shrink-0">
+                                    <span className="flex h-2 w-2 relative">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-600"></span>
+                                    </span>
+                                    <span>Vista Compartida ({activeSharedTechnicians.length} técnicos):</span>
+                                </span>
+
+                                {/* Toggle: Color por tipo vs Color por técnico */}
+                                <div className="inline-flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs">
+                                    <button
+                                        type="button"
+                                        onClick={() => setColorMode('by-type')}
+                                        className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                                            colorMode === 'by-type'
+                                                ? 'bg-teal-700 text-white shadow-xs font-bold'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                        }`}
+                                        title="Colorear citas según tipo de intervención (Social, Psicológica, etc.)"
+                                    >
+                                        <span>🏷️ Por tipo de cita</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setColorMode('by-technician')}
+                                        className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                                            colorMode === 'by-technician'
+                                                ? 'bg-teal-700 text-white shadow-xs font-bold'
+                                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                        }`}
+                                        title="Asignar un color distintivo exclusivo a cada técnico para analizar las citas de cada uno a la vez"
+                                    >
+                                        <IoColorPaletteOutline className="text-sm" />
+                                        <span>🎨 Por técnico/a</span>
+                                    </button>
+                                </div>
+
+                                {/* Toggle: Resaltar huecos comunes libres */}
+                                <button
+                                    type="button"
+                                    onClick={() => setHighlightFreeSlots(!highlightFreeSlots)}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all cursor-pointer shadow-2xs ${
+                                        highlightFreeSlots
+                                            ? 'bg-emerald-50 text-emerald-900 border-emerald-300 font-bold hover:bg-emerald-100'
+                                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                    }`}
+                                    title="Destacar franjas horarias donde TODOS los técnicos mostrados están libres a la vez para agendar reuniones o intervenciones conjuntas"
+                                >
+                                    <IoSparklesOutline className={`text-sm ${highlightFreeSlots ? 'text-emerald-600' : 'text-slate-400'}`} />
+                                    <span>Huecos comunes (8:00 - 15:00)</span>
+                                    {highlightFreeSlots && currentPeriodCommonFreeInfo.slots > 0 && (
+                                        <span 
+                                            className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-emerald-600 text-white shadow-2xs"
+                                            title={`${currentPeriodCommonFreeInfo.slots} franja(s) de 30 min libres entre 8:00 y 15:00`}
+                                        >
+                                            {currentPeriodCommonFreeInfo.hours}h ({currentPeriodCommonFreeInfo.slots} de 30m)
+                                        </span>
+                                    )}
+                                </button>
+
+                                {/* Toggle: Resaltar tareas conjuntas */}
+                                <button
+                                    type="button"
+                                    onClick={() => setHighlightJointTasks(!highlightJointTasks)}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all cursor-pointer shadow-2xs ${
+                                        highlightJointTasks
+                                            ? 'bg-indigo-50 text-indigo-900 border-indigo-300 font-bold hover:bg-indigo-100'
+                                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                    }`}
+                                    title="Resaltar con indicador y borde especial las citas que involucran a 2 o más de los técnicos mostrados"
+                                >
+                                    <IoFlashOutline className={`text-sm ${highlightJointTasks ? 'text-indigo-600' : 'text-slate-400'}`} />
+                                    <span>Tareas conjuntas</span>
+                                </button>
+                            </div>
+
+                            {/* Programar rápida conjunta & Leyenda de Colores de Técnicos */}
+                            <div className="flex items-center gap-2 flex-wrap self-end lg:self-auto">
+                                {colorMode === 'by-technician' && (
+                                    <div className="flex items-center gap-1.5 text-[11px] bg-white/90 px-2 py-1 rounded-lg border border-slate-200 shadow-2xs overflow-x-auto max-w-full">
+                                        <span className="font-bold text-slate-500 text-[10px] uppercase">Leyenda:</span>
+                                        {activeSharedTechnicians.map(tech => {
+                                            const cfg = getProfessionalColorConfig(tech.id, professionals);
+                                            return (
+                                                <div key={tech.id} className="flex items-center gap-1 shrink-0" title={`${tech.name} (${tech.role})`}>
+                                                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cfg.border }}></span>
+                                                    <span className="font-medium text-slate-700">{tech.name.split(' ')[0]}</span>
+                                                </div>
+                                            );
+                                        })}
+                                        {highlightJointTasks && (
+                                            <div className="flex items-center gap-1 shrink-0 border-l border-slate-200 pl-1.5 text-indigo-800 font-bold">
+                                                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+                                                <span>Conjunta</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleOpenModal(null, {
+                                        start: currentDate.toISOString(),
+                                        hasExplicitTime: true,
+                                        assignedTo: activeSharedTechnicians.map(t => t.id)
+                                    } as any)}
+                                    className="inline-flex items-center gap-1 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors shadow-2xs cursor-pointer"
+                                    title="Crear una nueva intervención con todos los técnicos activos asignados"
+                                >
+                                    <IoAddOutline className="text-sm font-bold" />
+                                    <span>+ Programar tarea conjunta</span>
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -1432,11 +1859,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
             : 'repeat(7, minmax(0, 1fr))';
     
         const timeColumn = (
-            <div className="w-16 flex-shrink-0 text-right pr-2">
+            <div className="w-16 flex-shrink-0 text-right pr-2 select-none">
                 {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => (
-                    <div key={`time-label-${i}`} style={{ height: `${HOUR_HEIGHT}px` }}>
-                        <span className="relative -top-3 text-xs text-slate-500">
+                    <div key={`time-label-${i}`} style={{ height: `${HOUR_HEIGHT}px` }} className="relative flex flex-col justify-between py-1">
+                        <span className="relative -top-2 text-xs font-semibold text-slate-600">
                             {`${(START_HOUR + i).toString().padStart(2, '0')}:00`}
+                        </span>
+                        <span className="relative text-[10px] text-slate-400 font-medium opacity-70">
+                            {`${(START_HOUR + i).toString().padStart(2, '0')}:30`}
                         </span>
                     </div>
                 ))}
@@ -1453,20 +1883,31 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                         const hour = START_HOUR + hourIndex;
                         const targetDay = weekDays[dayIndex];
                         const isWeekend = dayIndex >= 5;
-                        const slotDate = new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate(), hour, 0, 0, 0);
+                        const slotDate0 = new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate(), hour, 0, 0, 0);
+                        const slotDate30 = new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate(), hour, 30, 0, 0);
+
+                        const isFirstHalfFree = isSharedViewActive && highlightFreeSlots && (!collapseWeekends || !isWeekend) && checkIsCommonFreeSlot(targetDay, hour, 0);
+                        const isSecondHalfFree = isSharedViewActive && highlightFreeSlots && (!collapseWeekends || !isWeekend) && checkIsCommonFreeSlot(targetDay, hour, 30);
 
                         if (collapseWeekends && isWeekend) {
                             return (
                                 <div 
                                     key={`grid-cell-${i}`} 
                                     style={{ height: `${HOUR_HEIGHT}px` }} 
-                                    className="border-b border-l border-slate-200 bg-slate-100/80 cursor-pointer hover:bg-teal-50/50 transition-colors"
+                                    className="border-b border-l border-slate-200 bg-slate-100/80 cursor-pointer hover:bg-teal-50/50 transition-colors flex flex-col"
                                     onClick={() => {
                                         setCollapseWeekends(false);
-                                        handleOpenModal(null, { start: slotDate.toISOString(), hasExplicitTime: true } as any);
+                                        handleOpenModal(null, { 
+                                            start: slotDate0.toISOString(), 
+                                            hasExplicitTime: true,
+                                            assignedTo: isSharedViewActive ? activeSharedTechnicians.map(t => t.id) : undefined 
+                                        } as any);
                                     }}
                                     title={`Sábado/Domingo a las ${hour.toString().padStart(2, '0')}:00. Clic para expandir`}
-                                ></div>
+                                >
+                                    <div className="h-1/2 border-b border-dashed border-slate-200/60"></div>
+                                    <div className="h-1/2"></div>
+                                </div>
                             );
                         }
 
@@ -1474,12 +1915,76 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                             <div 
                                 key={`grid-cell-${i}`} 
                                 style={{ height: `${HOUR_HEIGHT}px` }} 
-                                className={`border-b border-l border-slate-200 cursor-pointer hover:bg-teal-50/40 transition-colors ${
-                                    isWeekend ? 'bg-slate-100/50' : 'bg-white'
-                                }`}
-                                onClick={() => handleOpenModal(null, { start: slotDate.toISOString(), hasExplicitTime: true } as any)}
-                                title={`Crear cita para ${targetDay.toLocaleDateString('es-ES')} a las ${hour.toString().padStart(2, '0')}:00`}
-                            ></div>
+                                className={`border-b border-l border-slate-200 flex flex-col ${isWeekend ? 'bg-slate-100/50' : 'bg-white'}`}
+                            >
+                                {/* First 30-min slot (:00 to :30) */}
+                                <div 
+                                    className={`h-1/2 border-b border-dashed transition-colors cursor-pointer relative group/free0 flex items-center justify-between px-1.5 ${
+                                        isFirstHalfFree 
+                                            ? 'bg-emerald-50/70 border-emerald-300/70 hover:bg-emerald-100/90' 
+                                            : 'border-slate-100 hover:bg-teal-50/40'
+                                    }`}
+                                    onClick={() => handleOpenModal(null, { 
+                                        start: slotDate0.toISOString(), 
+                                        hasExplicitTime: true,
+                                        assignedTo: isSharedViewActive ? activeSharedTechnicians.map(t => t.id) : undefined 
+                                    } as any)}
+                                    title={isFirstHalfFree 
+                                        ? `✨ Espacio común libre de ${hour.toString().padStart(2, '0')}:00 a ${hour.toString().padStart(2, '0')}:30 (${activeSharedTechnicians.length} técnicos libres). Clic para programar tarea conjunta.`
+                                        : `Crear cita para ${targetDay.toLocaleDateString('es-ES')} a las ${hour.toString().padStart(2, '0')}:00`}
+                                >
+                                    {isFirstHalfFree ? (
+                                        <div className="h-full w-full flex items-center justify-between opacity-85 group-hover/free0:opacity-100 transition-opacity">
+                                            <span className="text-[9px] font-bold text-emerald-800 flex items-center gap-0.5 bg-emerald-100/95 px-1 py-0.2 rounded shadow-2xs">
+                                                <IoSparklesOutline className="text-emerald-700 text-[10px] shrink-0" />
+                                                <span className="hidden xl:inline">{`${hour.toString().padStart(2, '0')}:00`}</span>
+                                                <span className="xl:hidden text-[8.5px]">Libre</span>
+                                            </span>
+                                            <span className="text-[9px] font-bold text-emerald-700 opacity-0 group-hover/free0:opacity-100 transition-opacity hidden sm:inline">
+                                                + 30m
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <span className="text-[8px] font-semibold text-slate-300 opacity-0 group-hover/free0:opacity-100 transition-opacity">
+                                            {`${hour.toString().padStart(2, '0')}:00`}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Second 30-min slot (:30 to :00) */}
+                                <div 
+                                    className={`h-1/2 transition-colors cursor-pointer relative group/free30 flex items-center justify-between px-1.5 ${
+                                        isSecondHalfFree 
+                                            ? 'bg-emerald-50/70 hover:bg-emerald-100/90' 
+                                            : 'hover:bg-teal-50/40'
+                                    }`}
+                                    onClick={() => handleOpenModal(null, { 
+                                        start: slotDate30.toISOString(), 
+                                        hasExplicitTime: true,
+                                        assignedTo: isSharedViewActive ? activeSharedTechnicians.map(t => t.id) : undefined 
+                                    } as any)}
+                                    title={isSecondHalfFree 
+                                        ? `✨ Espacio común libre de ${hour.toString().padStart(2, '0')}:30 a ${(hour + 1).toString().padStart(2, '0')}:00 (${activeSharedTechnicians.length} técnicos libres). Clic para programar tarea conjunta.`
+                                        : `Crear cita para ${targetDay.toLocaleDateString('es-ES')} a las ${hour.toString().padStart(2, '0')}:30`}
+                                >
+                                    {isSecondHalfFree ? (
+                                        <div className="h-full w-full flex items-center justify-between opacity-85 group-hover/free30:opacity-100 transition-opacity">
+                                            <span className="text-[9px] font-bold text-emerald-800 flex items-center gap-0.5 bg-emerald-100/95 px-1 py-0.2 rounded shadow-2xs">
+                                                <IoSparklesOutline className="text-emerald-700 text-[10px] shrink-0" />
+                                                <span className="hidden xl:inline">{`${hour.toString().padStart(2, '0')}:30`}</span>
+                                                <span className="xl:hidden text-[8.5px]">Libre</span>
+                                            </span>
+                                            <span className="text-[9px] font-bold text-emerald-700 opacity-0 group-hover/free30:opacity-100 transition-opacity hidden sm:inline">
+                                                + 30m
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <span className="text-[8px] font-semibold text-slate-300 opacity-0 group-hover/free30:opacity-100 transition-opacity">
+                                            {`${hour.toString().padStart(2, '0')}:30`}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                         );
                     })}
                 </div>
@@ -1608,9 +2113,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                     
                     {/* All-day Events Section */}
                     {allDayEventsByDay.some(e => e.length > 0) && (
-                        <div className="flex">
-                             <div className="w-16 flex-shrink-0 border-b border-slate-200 text-center flex items-center justify-center">
-                                <span className="text-xs font-semibold text-slate-500">Todo el día</span>
+                        <div className="flex border-b border-amber-200/80 bg-amber-50/40">
+                             <div className="w-16 flex-shrink-0 text-center flex items-center justify-center p-0.5">
+                                <span className="text-[9px] uppercase font-bold text-amber-800 bg-amber-100/90 px-1 py-0.5 rounded border border-amber-200/80 shadow-2xs" title="Acciones a realizar a lo largo del día (sin horario fijado)">
+                                    📋 A realizar
+                                </span>
                              </div>
                              <div className="flex-1 grid" style={{ gridTemplateColumns }}>
                                  {allDayEventsByDay.map((events, dayIndex) => {
@@ -1665,11 +2172,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         const positionedEvents = calculateEventPositions(rawTimedEvents);
     
         const timeColumn = (
-            <div className="w-16 flex-shrink-0 text-right pr-2">
+            <div className="w-16 flex-shrink-0 text-right pr-2 select-none">
                 {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => (
-                    <div key={`time-label-${i}`} style={{ height: `${HOUR_HEIGHT}px` }}>
-                        <span className="relative -top-3 text-xs text-slate-500">
+                    <div key={`time-label-${i}`} style={{ height: `${HOUR_HEIGHT}px` }} className="relative flex flex-col justify-between py-1">
+                        <span className="relative -top-2 text-xs font-semibold text-slate-600">
                             {`${(START_HOUR + i).toString().padStart(2, '0')}:00`}
+                        </span>
+                        <span className="relative text-[10px] text-slate-400 font-medium opacity-70">
+                            {`${(START_HOUR + i).toString().padStart(2, '0')}:30`}
                         </span>
                     </div>
                 ))}
@@ -1682,15 +2192,84 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                 <div className="grid-lines">
                     {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => {
                         const hour = START_HOUR + i;
-                        const slotDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), hour, 0, 0, 0);
+                        const slotDate0 = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), hour, 0, 0, 0);
+                        const slotDate30 = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), hour, 30, 0, 0);
+
+                        const isFirstHalfFree = isSharedViewActive && highlightFreeSlots && checkIsCommonFreeSlot(currentDate, hour, 0);
+                        const isSecondHalfFree = isSharedViewActive && highlightFreeSlots && checkIsCommonFreeSlot(currentDate, hour, 30);
+
                         return (
                             <div 
                                 key={`grid-line-${i}`} 
                                 style={{ height: `${HOUR_HEIGHT}px` }} 
-                                className="border-b border-slate-200 cursor-pointer hover:bg-teal-50/40 transition-colors"
-                                onClick={() => handleOpenModal(null, { start: slotDate.toISOString(), hasExplicitTime: true } as any)}
-                                title={`Crear cita para ${currentDate.toLocaleDateString('es-ES')} a las ${hour.toString().padStart(2, '0')}:00`}
-                            ></div>
+                                className="border-b border-slate-200 flex flex-col"
+                            >
+                                {/* First 30-min slot (:00 to :30) */}
+                                <div 
+                                    className={`h-1/2 border-b border-dashed transition-colors cursor-pointer flex items-center justify-between px-3 group/free0 ${
+                                        isFirstHalfFree 
+                                            ? 'bg-emerald-50/70 border-emerald-300/70 hover:bg-emerald-100/90' 
+                                            : 'border-slate-100 hover:bg-teal-50/40'
+                                    }`}
+                                    onClick={() => handleOpenModal(null, { 
+                                        start: slotDate0.toISOString(), 
+                                        hasExplicitTime: true,
+                                        assignedTo: isSharedViewActive ? activeSharedTechnicians.map(t => t.id) : undefined 
+                                    } as any)}
+                                    title={isFirstHalfFree 
+                                        ? `✨ Espacio común libre de ${hour.toString().padStart(2, '0')}:00 a ${hour.toString().padStart(2, '0')}:30 (${activeSharedTechnicians.length} técnicos libres). Clic para programar tarea conjunta.`
+                                        : `Crear cita para ${currentDate.toLocaleDateString('es-ES')} a las ${hour.toString().padStart(2, '0')}:00`}
+                                >
+                                    {isFirstHalfFree ? (
+                                        <>
+                                            <span className="text-xs font-bold text-emerald-800 flex items-center gap-1.5 bg-emerald-100/90 px-2 py-0.5 rounded shadow-2xs">
+                                                <IoSparklesOutline className="text-emerald-700 text-xs" />
+                                                <span>{`${hour.toString().padStart(2, '0')}:00 - ${hour.toString().padStart(2, '0')}:30`} · Espacio común libre ({activeSharedTechnicians.length} técnicos)</span>
+                                            </span>
+                                            <span className="text-xs font-bold text-emerald-700 opacity-0 group-hover/free0:opacity-100 transition-opacity bg-white/90 px-2 py-0.5 rounded border border-emerald-300 shadow-2xs">
+                                                + Programar conjunta (30 min)
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <span className="text-[10px] font-medium text-slate-300 opacity-0 group-hover/free0:opacity-100 transition-opacity">
+                                            {`${hour.toString().padStart(2, '0')}:00`}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Second 30-min slot (:30 to :00) */}
+                                <div 
+                                    className={`h-1/2 transition-colors cursor-pointer flex items-center justify-between px-3 group/free30 ${
+                                        isSecondHalfFree 
+                                            ? 'bg-emerald-50/70 hover:bg-emerald-100/90' 
+                                            : 'hover:bg-teal-50/40'
+                                    }`}
+                                    onClick={() => handleOpenModal(null, { 
+                                        start: slotDate30.toISOString(), 
+                                        hasExplicitTime: true,
+                                        assignedTo: isSharedViewActive ? activeSharedTechnicians.map(t => t.id) : undefined 
+                                    } as any)}
+                                    title={isSecondHalfFree 
+                                        ? `✨ Espacio común libre de ${hour.toString().padStart(2, '0')}:30 a ${(hour + 1).toString().padStart(2, '0')}:00 (${activeSharedTechnicians.length} técnicos libres). Clic para programar tarea conjunta.`
+                                        : `Crear cita para ${currentDate.toLocaleDateString('es-ES')} a las ${hour.toString().padStart(2, '0')}:30`}
+                                >
+                                    {isSecondHalfFree ? (
+                                        <>
+                                            <span className="text-xs font-bold text-emerald-800 flex items-center gap-1.5 bg-emerald-100/90 px-2 py-0.5 rounded shadow-2xs">
+                                                <IoSparklesOutline className="text-emerald-700 text-xs" />
+                                                <span>{`${hour.toString().padStart(2, '0')}:30 - ${(hour + 1).toString().padStart(2, '0')}:00`} · Espacio común libre ({activeSharedTechnicians.length} técnicos)</span>
+                                            </span>
+                                            <span className="text-xs font-bold text-emerald-700 opacity-0 group-hover/free30:opacity-100 transition-opacity bg-white/90 px-2 py-0.5 rounded border border-emerald-300 shadow-2xs">
+                                                + Programar conjunta (30 min)
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <span className="text-[10px] font-medium text-slate-300 opacity-0 group-hover/free30:opacity-100 transition-opacity">
+                                            {`${hour.toString().padStart(2, '0')}:30`}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                         );
                     })}
                 </div>
@@ -1719,8 +2298,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
         return (
             <div className="border border-slate-200 bg-white rounded-lg">
                  {allDayEvents.length > 0 && (
-                    <div className="p-2 border-b border-slate-200 flex items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-500 w-16 text-center flex-shrink-0">Todo el día</span>
+                    <div className="p-2 border-b border-amber-200/80 bg-amber-50/40 flex items-center gap-2">
+                        <span className="text-[10px] uppercase font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded border border-amber-200/80 w-24 text-center flex-shrink-0 shadow-2xs" title="Acciones a realizar a lo largo del día (sin horario fijado)">
+                            📋 A realizar
+                        </span>
                         <div className="flex-1 flex flex-wrap gap-1">
                             {allDayEvents.map(event => <EventItem key={event.id} event={event} />)}
                         </div>
@@ -1845,6 +2426,42 @@ const CalendarView: React.FC<CalendarViewProps> = ({ cases, generalInterventions
                                     Cerrar
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Restricted Access Modal Notice */}
+            {restrictedAccessNotice.isOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 text-2xl shrink-0">
+                                <IoLockClosedOutline />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h3 className="text-base font-bold text-slate-800">
+                                    Acceso Restringido
+                                </h3>
+                                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                                    No puedes entrar ni editar la cita <strong className="text-slate-800">"{restrictedAccessNotice.title}"</strong> porque no figuras como técnico/a asignado/a ni como creador/a.
+                                </p>
+                                {restrictedAccessNotice.associatedNames && (
+                                    <div className="mt-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
+                                        <span className="font-semibold text-slate-700">Técnicos asignados:</span>
+                                        <div className="mt-0.5 font-medium text-teal-800">{restrictedAccessNotice.associatedNames}</div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="mt-5 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setRestrictedAccessNotice({ isOpen: false, title: '', associatedNames: '' })}
+                                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                            >
+                                Entendido
+                            </button>
                         </div>
                     </div>
                 </div>

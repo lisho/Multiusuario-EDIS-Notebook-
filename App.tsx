@@ -1740,7 +1740,7 @@ const App: React.FC = () => {
                             onSelectCaseById={handleSelectCaseById}
                             onTaskToEntry={(task, caseId) => {
                                 setTaskToConvert(task);
-                                handleSelectCaseById(caseId, 'timeline');
+                                handleSelectCaseById(caseId, 'notebook');
                             }}
                         />;
             case 'cases':

@@ -36,7 +36,11 @@ const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
     const [assignedTo, setAssignedTo] = useState<string[]>([]);
 
     const availableProfessionals = React.useMemo(() => {
-        const edisProfs = professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+        const edisProfs = professionals.filter(p => 
+            p.role === ProfessionalRole.EdisTechnician || 
+            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
+            p.role !== ProfessionalRole.SocialWorker
+        );
         if (caseProfessionalIds && caseProfessionalIds.length > 0) {
             const caseProfs = edisProfs.filter(p => caseProfessionalIds.includes(p.id));
             return caseProfs.length > 0 ? caseProfs : edisProfs;

@@ -162,9 +162,13 @@ export const QuickMobileHubModal: React.FC<QuickMobileHubModalProps> = ({
         return cases.find(c => c.id === targetCaseId) || null;
     }, [cases, targetCaseId]);
 
-    // EDIS Technicians
+    // EDIS Technicians (all EDIS technicians)
     const edisTechnicians = useMemo(() => {
-        return professionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
+        return professionals.filter(p => 
+            p.role === ProfessionalRole.EdisTechnician || 
+            (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) ||
+            p.role !== ProfessionalRole.SocialWorker
+        );
     }, [professionals]);
 
     // Today's agenda interventions

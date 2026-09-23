@@ -66,7 +66,7 @@ const CaseCard: React.FC<CaseCardProps> = ({
 
     const assignedProfessionals = (caseData.professionalIds || [])
         .map(id => professionals.find(p => p.id === id))
-        .filter(p => p && p.systemRole !== 'admin') as Professional[];
+        .filter(Boolean) as Professional[];
 
     const socialWorkers = assignedProfessionals.filter(p => p.role === ProfessionalRole.SocialWorker);
     const edisTechnicians = assignedProfessionals.filter(p => p.role === ProfessionalRole.EdisTechnician);
