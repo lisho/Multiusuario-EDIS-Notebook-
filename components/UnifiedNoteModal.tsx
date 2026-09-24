@@ -132,7 +132,7 @@ const UnifiedNoteModal: React.FC<UnifiedNoteModalProps> = ({
         // If changing to task, ensure assignedTo contains valid technicians
         if (newType === 'task') {
             const edisIds = professionals
-                .filter(p => p.role === ProfessionalRole.EdisTechnician || (p.role !== ProfessionalRole.SocialWorker && p.isSystemUser) || p.role !== ProfessionalRole.SocialWorker)
+                .filter(isEdisProfessional)
                 .map(p => p.id);
             setAssignedTo(prev => {
                 const filtered = prev.filter(id => edisIds.includes(id));

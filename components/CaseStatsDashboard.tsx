@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Case, CaseStatus, Professional, Intervention, InterventionType, InterventionStatus, DashboardView, Task, User, ProfessionalRole, MyNote } from '../types';
+import { Case, CaseStatus, Professional, Intervention, InterventionType, InterventionStatus, DashboardView, Task, User, ProfessionalRole, MyNote, isEdisProfessional, isEdisTechnicianRole } from '../types';
 import NewEventModal from './NewEventModal';
 import ExpiredActionsModal from './ExpiredActionsModal';
 import MissingProfessionalsModal from './MissingProfessionalsModal';
@@ -629,8 +629,8 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         return activeCases
             .map(caseData => {
                 const assignedProfs = (caseData.professionalIds || []).map(id => professionalMap.get(id)).filter(Boolean) as Professional[];
-                const hasTS = assignedProfs.some(p => p.role === ProfessionalRole.SocialWorker || p.role === "Trabajador/a Social" as any);
-                const hasEDIS = assignedProfs.some(p => p.role === ProfessionalRole.EdisTechnician || p.role === "Técnico/a EDIS" as any);
+                const hasTS = assignedProfs.some(p => p.role === ProfessionalRole.SocialWorker || p.role === "Trabajador/a Social" as any || p.role === "TS" as any);
+                const hasEDIS = assignedProfs.some(p => isEdisProfessional(p) || isEdisTechnicianRole(p.role));
                 
                 if (!hasTS || !hasEDIS) {
                     return { caseData, missingTS: !hasTS, missingEDIS: !hasEDIS };
