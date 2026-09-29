@@ -496,31 +496,45 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         });
         const allInterventions = Array.from(uniqueInterventionsMap.values());
         
-        const dateString = dateObj.toDateString();
+        // Quick map for case professional assignments
+        const caseMap = new Map<string, Case>();
+        cases.forEach(c => {
+            if (c.id) caseMap.set(c.id, c);
+        });
+
+        const targetDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
 
         return allInterventions
             .filter(event => {
                 if (!event || !event.start) return false;
 
-                const isOnDay = event.isAllDay && event.end
-                    ? (() => {
-                        const check = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
-                        const s = new Date(new Date(event.start).getFullYear(), new Date(event.start).getMonth(), new Date(event.start).getDate());
-                        const e = new Date(new Date(event.end).getFullYear(), new Date(event.end).getMonth(), new Date(event.end).getDate());
-                        return check >= s && check <= e;
-                    })()
-                    : new Date(event.start).toDateString() === dateString;
+                const eventStart = new Date(event.start);
+                if (isNaN(eventStart.getTime())) return false;
+
+                let isOnDay = false;
+                if (event.isAllDay) {
+                    const startDay = new Date(eventStart.getFullYear(), eventStart.getMonth(), eventStart.getDate());
+                    const eventEnd = event.end ? new Date(event.end) : eventStart;
+                    const endDay = isNaN(eventEnd.getTime()) 
+                        ? startDay 
+                        : new Date(eventEnd.getFullYear(), eventEnd.getMonth(), eventEnd.getDate());
+                    isOnDay = targetDay >= startDay && targetDay <= endDay;
+                } else {
+                    const startDay = new Date(eventStart.getFullYear(), eventStart.getMonth(), eventStart.getDate());
+                    isOnDay = targetDay.getTime() === startDay.getTime();
+                }
 
                 if (!isOnDay) return false;
 
                 if (!currentUser) return true;
                 if (currentUser.role === 'admin') return true;
 
-                // Users see interventions where they are assigned or which they created
+                // Users see interventions where they are assigned, which they created, or where the case is assigned to them
                 const isAssigned = Boolean(event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.includes(currentUser.id));
                 const isCreator = event.createdBy === currentUser.id;
+                const isCaseAssigned = Boolean(event.caseId && caseMap.get(event.caseId)?.professionalIds?.includes(currentUser.id));
 
-                return isAssigned || isCreator;
+                return isAssigned || isCreator || isCaseAssigned;
             })
             .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
     };
@@ -547,12 +561,12 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
         return todaysAgenda;
     }, [agendaTab, yesterdayAgenda, todaysAgenda, tomorrowAgenda]);
 
-    const pendingAllDayInterventions = useMemo(() => {
-        return displayedAgenda.filter(event => event.isAllDay && event.status === InterventionStatus.Planned);
+    const allDayInterventions = useMemo(() => {
+        return displayedAgenda.filter(event => !!event.isAllDay);
     }, [displayedAgenda]);
 
-    const standardAgendaEvents = useMemo(() => {
-        return displayedAgenda.filter(event => !(event.isAllDay && event.status === InterventionStatus.Planned));
+    const timedAgendaEvents = useMemo(() => {
+        return displayedAgenda.filter(event => !event.isAllDay);
     }, [displayedAgenda]);
 
     const todayPendingAllDayCount = useMemo(() => {
@@ -817,8 +831,8 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                 </button>
                             </div>
 
-                            {/* Alerta de actuaciones de día completo pendientes (Apunte recordatorio en la parte superior) */}
-                            {pendingAllDayInterventions.length > 0 && (
+                            {/* Actuaciones a lo largo del día (horario libre) */}
+                            {allDayInterventions.length > 0 && (
                                 <div className="mb-4 bg-gradient-to-r from-amber-50 via-amber-50/80 to-orange-50/70 border-2 border-amber-300/90 rounded-xl p-3.5 shadow-sm animate-fadeIn">
                                     <div className="flex items-center justify-between gap-2 mb-2.5">
                                         <div className="flex items-center gap-2">
@@ -827,15 +841,15 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                             </span>
                                             <div>
                                                 <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide flex items-center gap-1.5">
-                                                    <span>Alerta:</span>
-                                                    <span>{pendingAllDayInterventions.length === 1 ? '1 Actuación de Día Completo Pendiente' : `${pendingAllDayInterventions.length} Actuaciones de Día Completo Pendientes`}</span>
+                                                    <span>A desarrollar a lo largo del día:</span>
+                                                    <span>{allDayInterventions.length === 1 ? '1 Actuación (horario libre)' : `${allDayInterventions.length} Actuaciones (horario libre)`}</span>
                                                 </h4>
                                                 <p className="text-[11px] text-amber-800 font-medium">
                                                     {agendaTab === 'today'
-                                                        ? 'Apunte para realizar en algún momento del día de hoy:'
+                                                        ? 'Tareas o gestiones a realizar en cualquier momento del día de hoy:'
                                                         : agendaTab === 'tomorrow'
-                                                        ? 'Apunte para realizar en algún momento de mañana:'
-                                                        : 'Apunte planificado de día completo:'}
+                                                        ? 'Tareas o gestiones a realizar a lo largo de mañana:'
+                                                        : 'Tareas o gestiones planificadas a lo largo del día:'}
                                                 </p>
                                             </div>
                                         </div>
@@ -845,17 +859,18 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                     </div>
 
                                     <div className="space-y-2">
-                                        {pendingAllDayInterventions.map((event) => {
+                                        {allDayInterventions.map((event) => {
                                             const Icon = interventionIcons[event.interventionType] || IoDocumentTextOutline;
                                             const styleClass = interventionTypeStyles[event.interventionType] || 'text-amber-700';
                                             const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
                                             const associatedProfs = getAssociatedProfessionals(event, caseForEvent);
                                             const isMenuOpen = openMenuId === `allday-${event.id}`;
+                                            const currentStatusStyle = statusStyles[event.status];
 
                                             return (
                                                 <div 
-                                                    key={`allday-alert-${event.id}`}
-                                                    className="bg-white border border-amber-200/90 rounded-lg p-3 shadow-2xs hover:border-amber-400 transition-all flex flex-col gap-2.5"
+                                                    key={`allday-${event.id}`}
+                                                    className={`border rounded-lg p-3 shadow-2xs hover:border-amber-400 transition-all flex flex-col gap-2.5 ${event.status === InterventionStatus.Cancelled ? 'bg-slate-50 opacity-70 border-slate-200' : 'bg-white border-amber-200/90'}`}
                                                 >
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div className="flex items-start gap-2.5 min-w-0 flex-grow">
@@ -864,7 +879,7 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                                             </div>
                                                             <div className="min-w-0 flex-grow">
                                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                                    <p className="font-bold text-sm text-slate-900 leading-snug break-words" title={event.title}>
+                                                                    <p className={`font-bold text-sm text-slate-900 leading-snug break-words ${event.status === InterventionStatus.Cancelled ? 'line-through text-slate-500' : ''}`} title={event.title}>
                                                                         {event.title}
                                                                     </p>
                                                                     <span className="text-[11px] font-semibold px-2 py-0.2 rounded bg-amber-100/80 text-amber-900 border border-amber-200">
@@ -938,22 +953,25 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                                         </label>
 
                                                         <div className="flex items-center gap-2">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleStatusChange(event, InterventionStatus.Completed)}
-                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-2xs transition-colors cursor-pointer"
-                                                                title="Marcar como realizada"
-                                                            >
-                                                                <IoCheckmarkCircleOutline className="text-sm" />
-                                                                <span>Marcar realizada</span>
-                                                            </button>
+                                                            {event.status === InterventionStatus.Planned && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleStatusChange(event, InterventionStatus.Completed)}
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-2xs transition-colors cursor-pointer"
+                                                                    title="Marcar como realizada"
+                                                                >
+                                                                    <IoCheckmarkCircleOutline className="text-sm" />
+                                                                    <span>Marcar realizada</span>
+                                                                </button>
+                                                            )}
 
                                                             <div className="relative" ref={isMenuOpen ? menuRef : null}>
                                                                 <button
                                                                     onClick={() => setOpenMenuId(isMenuOpen ? null : `allday-${event.id}`)}
-                                                                    className="text-[11px] font-medium px-2 py-1 rounded bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300 transition-colors cursor-pointer"
+                                                                    className={`text-[11px] font-semibold px-2 py-1 rounded-md border transition-colors cursor-pointer flex items-center gap-1.5 ${currentStatusStyle.bg} ${currentStatusStyle.text}`}
                                                                 >
-                                                                    Planificada ▾
+                                                                    <span className={`w-2 h-2 rounded-full ${currentStatusStyle.dot}`}></span>
+                                                                    {event.status} ▾
                                                                 </button>
                                                                 {isMenuOpen && (
                                                                     <div className="absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-30 py-1">
@@ -982,16 +1000,16 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                 </div>
                             )}
 
-                            {standardAgendaEvents.length > 0 ? (
+                            {timedAgendaEvents.length > 0 ? (
                                 <div className="space-y-2">
-                                    {pendingAllDayInterventions.length > 0 && (
+                                    {allDayInterventions.length > 0 && (
                                         <div className="flex items-center gap-1.5 pt-1 pb-1 text-xs font-bold text-slate-500 uppercase tracking-wider">
                                             <IoTimeOutline className="text-sm" />
                                             <span>Citas y actuaciones con horario</span>
                                         </div>
                                     )}
                                     <ul key={agendaTab} className="space-y-3">
-                                        {standardAgendaEvents.map((event, index) => {
+                                        {timedAgendaEvents.map((event, index) => {
                                             const Icon = interventionIcons[event.interventionType] || IoDocumentTextOutline;
                                             const styleClass = interventionTypeStyles[event.interventionType] || 'text-gray-500';
                                             const caseForEvent = event.caseId ? cases.find(c => c.id === event.caseId) : null;
@@ -1101,21 +1119,15 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                                         })}
                                     </ul>
                                 </div>
-                            ) : (
+                            ) : allDayInterventions.length === 0 ? (
                                 <div className="text-center text-slate-500 py-6">
-                                    {pendingAllDayInterventions.length > 0 ? (
-                                        <p className="text-xs text-slate-500 italic">
-                                            No hay otras citas con horario fijado para este día.
-                                        </p>
-                                    ) : (
-                                        <p>
-                                            {agendaTab === 'yesterday' && 'No hubo nada programado para ayer.'}
-                                            {agendaTab === 'today' && 'No hay nada programado para hoy.'}
-                                            {agendaTab === 'tomorrow' && 'No hay nada programado para mañana.'}
-                                        </p>
-                                    )}
+                                    <p>
+                                        {agendaTab === 'yesterday' && 'No hubo nada programado para ayer.'}
+                                        {agendaTab === 'today' && 'No hay nada programado para hoy.'}
+                                        {agendaTab === 'tomorrow' && 'No hay nada programado para mañana.'}
+                                    </p>
                                 </div>
-                            )}
+                            ) : null}
                         </div>
                     </AnimatedItem>
                 </div>

@@ -169,7 +169,6 @@ export const QuickMobileHubModal: React.FC<QuickMobileHubModalProps> = ({
 
     // Today's agenda interventions
     const todayAgendaEvents = useMemo(() => {
-        const todayStr = new Date().toDateString();
         const uniqueMap = new Map<string, Intervention>();
 
         cases.forEach(c => {
@@ -181,25 +180,41 @@ export const QuickMobileHubModal: React.FC<QuickMobileHubModalProps> = ({
             if (i && i.id && !uniqueMap.has(i.id)) uniqueMap.set(i.id, i);
         });
 
+        const caseMap = new Map<string, Case>();
+        cases.forEach(c => {
+            if (c.id) caseMap.set(c.id, c);
+        });
+
+        const now = new Date();
+        const targetDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
         return Array.from(uniqueMap.values())
             .filter(event => {
                 if (!event || !event.start) return false;
-                const isOnDay = event.isAllDay && event.end
-                    ? (() => {
-                        const now = new Date();
-                        const check = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                        const s = new Date(new Date(event.start).getFullYear(), new Date(event.start).getMonth(), new Date(event.start).getDate());
-                        const e = new Date(new Date(event.end).getFullYear(), new Date(event.end).getMonth(), new Date(event.end).getDate());
-                        return check >= s && check <= e;
-                    })()
-                    : new Date(event.start).toDateString() === todayStr;
+                const eventStart = new Date(event.start);
+                if (isNaN(eventStart.getTime())) return false;
+
+                let isOnDay = false;
+                if (event.isAllDay) {
+                    const startDay = new Date(eventStart.getFullYear(), eventStart.getMonth(), eventStart.getDate());
+                    const eventEnd = event.end ? new Date(event.end) : eventStart;
+                    const endDay = isNaN(eventEnd.getTime()) 
+                        ? startDay 
+                        : new Date(eventEnd.getFullYear(), eventEnd.getMonth(), eventEnd.getDate());
+                    isOnDay = targetDay >= startDay && targetDay <= endDay;
+                } else {
+                    const startDay = new Date(eventStart.getFullYear(), eventStart.getMonth(), eventStart.getDate());
+                    isOnDay = targetDay.getTime() === startDay.getTime();
+                }
 
                 if (!isOnDay) return false;
                 if (!currentUser || currentUser.role === 'admin') return true;
 
                 const isAssigned = Boolean(event.assignedTo && Array.isArray(event.assignedTo) && event.assignedTo.includes(currentUser.id));
                 const isCreator = event.createdBy === currentUser.id;
-                return isAssigned || isCreator;
+                const isCaseAssigned = Boolean(event.caseId && caseMap.get(event.caseId)?.professionalIds?.includes(currentUser.id));
+
+                return isAssigned || isCreator || isCaseAssigned;
             })
             .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
     }, [cases, generalInterventions, currentUser]);

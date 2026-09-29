@@ -114,7 +114,7 @@ const getInterventionTypeColor = (type: InterventionType): { backgroundColor: st
 const isDateInRange = (date: Date, start: Date, end: Date) => {
     const checkDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const startDate = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-    const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    const endDate = (!end || isNaN(end.getTime())) ? startDate : new Date(end.getFullYear(), end.getMonth(), end.getDate());
     return checkDate >= startDate && checkDate <= endDate;
 };
 
