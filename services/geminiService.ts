@@ -1,8 +1,74 @@
 import { GoogleGenAI, Type, Chat } from '@google/genai';
 import { Intervention, Case, InterventionMoment } from '../types';
 
-// Per coding guidelines, API_KEY is assumed to be present in the environment.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// The primary model with the broadest rate limits, highest throughput, and lowest latency
+export const PRIMARY_AI_MODEL = 'gemini-3.1-flash-lite';
+export const FALLBACK_AI_MODEL = 'gemini-flash-latest';
+
+// Robust API key discovery from environment
+const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+
+const ai = new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+        headers: {
+            'User-Agent': 'aistudio-build',
+        }
+    }
+});
+
+/**
+ * Resilient content generator that handles high-demand 503 spikes,
+ * rate limit 429s, and seamlessly falls back to alternate models.
+ */
+async function generateContentWithRetryAndFallback(params: {
+    contents: any;
+    config?: any;
+    preferredModel?: string;
+    maxRetries?: number;
+}): Promise<any> {
+    const modelsToTry = [
+        params.preferredModel || PRIMARY_AI_MODEL,
+        FALLBACK_AI_MODEL,
+        'gemini-3.8-flash'
+    ].filter((v, i, a) => a.indexOf(v) === i);
+
+    let lastError: any = null;
+
+    for (const model of modelsToTry) {
+        let attempts = 0;
+        const maxAttempts = params.maxRetries ?? 2;
+        while (attempts < maxAttempts) {
+            try {
+                const response = await ai.models.generateContent({
+                    model,
+                    contents: params.contents,
+                    config: params.config,
+                });
+                return response;
+            } catch (err: any) {
+                lastError = err;
+                attempts++;
+                const isTransient = 
+                    err?.status === 503 || 
+                    err?.code === 503 || 
+                    err?.status === 429 || 
+                    err?.code === 429 ||
+                    err?.message?.includes('high demand') || 
+                    err?.message?.includes('temporarily') ||
+                    err?.message?.includes('quota');
+
+                if (isTransient && attempts < maxAttempts) {
+                    await new Promise(res => setTimeout(res, 800 * attempts));
+                } else {
+                    break; // Switch to fallback model
+                }
+            }
+        }
+    }
+
+    throw lastError;
+}
 
 const responseSchema = {
     type: Type.OBJECT,
@@ -56,7 +122,7 @@ Ahora actuarás como un asistente conversacional para ayudar al trabajador socia
 Sé empático, profesional, claro y basado EXCLUSIVAMENTE en la información proporcionada. Responde en español y en formato Markdown limpio.`;
 
     return ai.chats.create({
-        model: 'gemini-3.5-flash',
+        model: PRIMARY_AI_MODEL,
         config: {
             systemInstruction: systemInstruction,
         }
@@ -64,20 +130,19 @@ Sé empático, profesional, claro y basado EXCLUSIVAMENTE en la información pro
 };
 
 export const generateCaseSummary = async (interventions: Intervention[]): Promise<{ summary: string; key_themes: string[]; recommendations: string[] }> => {
-    
     const formattedEntries = interventions
         .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
         .map(entry => `
 Fecha: ${new Date(entry.start).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}
 Tipo: ${entry.interventionType}
 Título: ${entry.title}
-Notas: ${entry.notes}
+Notas: ${entry.notes || 'Sin notas adicionales'}
         `)
         .join('\n---\n');
 
     const prompt = `
-Eres un supervisor experto en trabajo social especializado en casos complejos de inclusión.
-Analiza las siguientes entradas cronológicas del cuaderno de campo para un único individuo.
+Eres un supervisor experto en trabajo social especializado en casos complejos de inclusión social.
+Analiza las siguientes entradas cronológicas del cuaderno de campo para este caso.
 Basándote en estas notas, proporciona un análisis conciso y estructurado.
 Tu respuesta DEBE ser un objeto JSON válido con la siguiente estructura:
 {
@@ -96,21 +161,26 @@ ${formattedEntries}
     `;
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3.5-flash',
+        const response = await generateContentWithRetryAndFallback({
+            preferredModel: PRIMARY_AI_MODEL,
             contents: prompt,
             config: {
                 responseMimeType: 'application/json',
                 responseSchema: responseSchema,
-                temperature: 0.5,
+                temperature: 0.4,
             },
         });
         
-        const jsonText = response.text.trim();
+        const jsonText = response.text ? response.text.trim() : '{}';
         return JSON.parse(jsonText);
-    } catch (error) {
-        console.error('Error calling Gemini API:', error);
-        throw new Error('Failed to generate case summary from AI.');
+    } catch (error: any) {
+        console.error('Error calling Gemini API for case summary:', error);
+        const errMsg = error?.message?.includes('high demand')
+            ? 'Los servidores de IA están experimentando alta demanda momentánea. Por favor, reintenta en unos instantes.'
+            : error?.message?.includes('quota') || error?.status === 429
+            ? 'Se ha alcanzado temporalmente el límite de consultas. Por favor, espera unos segundos.'
+            : 'No se pudieron generar los insights. Por favor, inténtalo de nuevo más tarde.';
+        throw new Error(errMsg);
     }
 };
 
@@ -155,13 +225,12 @@ ${pendingTasks || 'No hay tareas pendientes.'}
 Inicia la conversación saludando al profesional y preguntándole en qué aspecto de la fase actual le gustaría profundizar.`;
 };
 
-
 export const createExplorationChat = (caseData: Case, moment: InterventionMoment): Chat => {
     const systemInstruction = getSystemInstruction(moment);
     const caseContext = getCaseContext(caseData);
 
     const chat = ai.chats.create({
-        model: 'gemini-3.5-flash',
+        model: PRIMARY_AI_MODEL,
         config: {
             systemInstruction: systemInstruction,
         },
@@ -225,19 +294,19 @@ Ejemplo de respuesta para las cabeceras ['Asunto', 'Fecha', 'Detalles', 'ID Caso
 `;
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3.5-flash',
+        const response = await generateContentWithRetryAndFallback({
+            preferredModel: PRIMARY_AI_MODEL,
             contents: prompt,
             config: {
                 responseMimeType: 'application/json',
                 responseSchema: csvMappingResponseSchema
             }
         });
-        const jsonText = response.text.trim();
+        const jsonText = response.text ? response.text.trim() : '{}';
         return JSON.parse(jsonText);
     } catch (error) {
         console.error('Error mapping CSV headers with Gemini API:', error);
-        throw new Error('Failed to get AI-powered column mapping.');
+        throw new Error('No se pudo mapear automáticamente el CSV con la IA.');
     }
 };
 
@@ -278,13 +347,13 @@ Asegúrate de extraer TODOS los eventos presentes en el documento.
 `;
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3.5-flash',
+        const response = await generateContentWithRetryAndFallback({
+            preferredModel: PRIMARY_AI_MODEL,
             contents: {
                 parts: [
                     {
                         inlineData: {
-                            data: base64Pdf.split(',')[1] || base64Pdf, // Remove data URI prefix if present
+                            data: base64Pdf.split(',')[1] || base64Pdf,
                             mimeType: 'application/pdf'
                         }
                     },
@@ -351,8 +420,8 @@ ${rawText}
 Responde ÚNICAMENTE con el texto final mejorado, sin preámbulos, intros ni saludos.`;
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
+        const response = await generateContentWithRetryAndFallback({
+            preferredModel: PRIMARY_AI_MODEL,
             contents: prompt,
             config: {
                 temperature: 0.3,

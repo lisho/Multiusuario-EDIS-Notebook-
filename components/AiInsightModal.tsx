@@ -62,7 +62,8 @@ const AiInsightModal: React.FC<AiInsightModalProps> = ({ isOpen, onClose, interv
         })
         .catch(err => {
           console.error(err);
-          setError('No se pudieron generar los insights. Por favor, inténtalo de nuevo más tarde.');
+          const message = err?.message || 'No se pudieron generar los insights. Por favor, inténtalo de nuevo más tarde.';
+          setError(message);
           setStage('error');
         });
     }
@@ -218,9 +219,13 @@ const AiInsightModal: React.FC<AiInsightModalProps> = ({ isOpen, onClose, interv
                 <p className="mt-2 text-slate-600 max-w-md">
                     Obtén un resumen estructurado y la posibilidad de chatear sobre el contenido y evolución del caso.
                 </p>
+                <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 bg-teal-50 border border-teal-200 rounded-full text-xs font-medium text-teal-700">
+                    <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></span>
+                    Motor optimizado: Gemini 3.1 Flash Lite (Límites ampliados y alta velocidad)
+                </div>
                 <button
                     onClick={handleGenerate}
-                    className="mt-8 bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500"
+                    className="mt-6 bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 shadow-sm"
                 >
                     Generar Análisis
                 </button>

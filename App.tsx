@@ -1301,6 +1301,12 @@ const App: React.FC = () => {
     };
 
     const handleDeleteIntervention = async (interventionToDelete: Intervention) => {
+        // Enforce permission: only creator or admin can delete
+        if (currentUser && currentUser.role !== 'admin' && interventionToDelete.createdBy && interventionToDelete.createdBy !== currentUser.id) {
+            console.warn("Unauthorized attempt to delete intervention: user is not the creator");
+            return;
+        }
+
         try {
             if (interventionToDelete.caseId) {
                 const caseRef = doc(db, 'cases', interventionToDelete.caseId);

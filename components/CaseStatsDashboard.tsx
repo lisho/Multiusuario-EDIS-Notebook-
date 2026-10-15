@@ -1406,6 +1406,8 @@ const CaseStatsDashboard: React.FC<CaseStatsDashboardProps> = (props) => {
                 onSaveIntervention={onSaveIntervention}
                 onDeleteIntervention={onDeleteIntervention}
                 requestConfirmation={requestConfirmation}
+                currentUser={currentUser}
+                professionals={professionals}
             />
             <MissingProfessionalsModal
                 isOpen={isMissingProfsModalOpen}

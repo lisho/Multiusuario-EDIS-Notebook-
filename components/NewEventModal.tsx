@@ -104,7 +104,11 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
     // Check if the current user is allowed to assign/reassign technicians: only the creator of the event or admin
     const creatorId = formData.createdBy || (isEditing ? (itemData as Intervention)?.createdBy : currentUser?.id);
     const creatorProfessional = creatorId ? professionals.find(p => p.id === creatorId) : null;
-    const canAssignTechnicians = !isEditing || !creatorId || creatorId === currentUser?.id || currentUser?.role === 'admin';
+    const isCreator = Boolean(creatorId && currentUser?.id && creatorId === currentUser.id);
+    const canAssignTechnicians = !isEditing || !creatorId || isCreator || currentUser?.role === 'admin';
+
+    // Only the creator (or admin) can delete calendar interventions
+    const canDelete = isEditing && Boolean(!creatorId || isCreator || currentUser?.role === 'admin');
 
     const isOnlyMeSelected = Boolean(
         currentUser?.id && 
@@ -283,6 +287,7 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
     };
 
     const handleDelete = () => {
+        if (!canDelete) return;
         if (isEditing) {
             requestConfirmation(
                 'Eliminar Intervención',
@@ -587,9 +592,19 @@ const NewEventModal: React.FC<NewEventModalProps> = ({ isOpen, onClose, itemData
                 <div className="flex justify-between items-center p-4 border-t border-slate-200">
                     <div>
                     {isEditing && (
-                        <button type="button" onClick={handleDelete} className="px-4 py-2 text-red-600 hover:bg-red-50 font-semibold flex items-center gap-2 rounded-lg transition-colors">
+                        <button 
+                            type="button" 
+                            onClick={handleDelete} 
+                            disabled={!canDelete}
+                            title={!canDelete ? `Solo la persona que ha creado esta cita (${creatorProfessional ? creatorProfessional.name : 'creador/a inicial'}) puede eliminarla.` : 'Eliminar esta intervención'}
+                            className={`px-4 py-2 font-semibold flex items-center gap-2 rounded-lg transition-colors ${
+                                canDelete 
+                                    ? 'text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer' 
+                                    : 'text-slate-400 bg-slate-100/90 cursor-not-allowed border border-slate-200 opacity-60 shadow-none'
+                            }`}
+                        >
                             <IoTrashOutline className="text-xl" />
-                            Eliminar
+                            {canDelete ? 'Eliminar' : 'Eliminar (Solo creador/a)'}
                         </button>
                     )}
                     </div>

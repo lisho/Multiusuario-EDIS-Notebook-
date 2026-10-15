@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Intervention, Case, InterventionStatus } from '../types';
+import { Intervention, Case, InterventionStatus, User, Professional } from '../types';
 import { IoCloseOutline, IoAlertCircleOutline, IoPencilOutline, IoArrowForwardCircleOutline, IoBookOutline, IoTrashOutline } from 'react-icons/io5';
 
 interface ExpiredActionsModalProps {
@@ -12,11 +12,14 @@ interface ExpiredActionsModalProps {
   onSaveIntervention: (intervention: Intervention) => void;
   onDeleteIntervention: (intervention: Intervention) => void;
   requestConfirmation: (title: string, message: string, onConfirm: () => void) => void;
+  currentUser?: User | null;
+  professionals?: Professional[];
 }
 
 const ExpiredActionsModal: React.FC<ExpiredActionsModalProps> = ({ 
     isOpen, onClose, interventions, cases, onSelectCaseById, 
-    onEditIntervention, onSaveIntervention, onDeleteIntervention, requestConfirmation 
+    onEditIntervention, onSaveIntervention, onDeleteIntervention, requestConfirmation,
+    currentUser, professionals 
 }) => {
     const uniqueInterventions = useMemo(() => {
         const seen = new Set<string>();
@@ -142,13 +145,28 @@ const ExpiredActionsModal: React.FC<ExpiredActionsModalProps> = ({
                                             >
                                                 <IoPencilOutline className="text-lg"/>
                                             </button>
-                                            <button 
-                                                onClick={() => handleDelete(event)}
-                                                className="text-slate-500 hover:text-red-600 p-1.5 rounded-full hover:bg-red-50 transition-colors ml-1"
-                                                title="Eliminar intervención"
-                                            >
-                                                <IoTrashOutline className="text-lg"/>
-                                            </button>
+                                            {(() => {
+                                                const isCreator = !event.createdBy || (currentUser?.id && event.createdBy === currentUser.id);
+                                                const canDelete = Boolean(isCreator || currentUser?.role === 'admin');
+                                                const creatorProf = event.createdBy ? professionals?.find(p => p.id === event.createdBy) : null;
+                                                return canDelete ? (
+                                                    <button 
+                                                        onClick={() => handleDelete(event)}
+                                                        className="text-slate-500 hover:text-red-600 p-1.5 rounded-full hover:bg-red-50 transition-colors ml-1 cursor-pointer"
+                                                        title="Eliminar intervención"
+                                                    >
+                                                        <IoTrashOutline className="text-lg"/>
+                                                    </button>
+                                                ) : (
+                                                    <button 
+                                                        disabled
+                                                        className="text-slate-300 p-1.5 rounded-full cursor-not-allowed ml-1 opacity-50"
+                                                        title={`Solo la persona que ha creado esta cita (${creatorProf ? creatorProf.name : 'creador/a inicial'}) puede eliminarla.`}
+                                                    >
+                                                        <IoTrashOutline className="text-lg"/>
+                                                    </button>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </li>
